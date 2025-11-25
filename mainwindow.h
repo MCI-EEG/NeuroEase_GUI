@@ -16,6 +16,8 @@ class QCustomPlot;
 class QCPBars;
 class ZoomableGraphicsView;
 class AbstractDataSource;
+class DataProcessingQt;
+class QCheckBox;
 
 class MainWindow : public QMainWindow
 {
@@ -40,13 +42,14 @@ private:
 
     void updateElectrodePlacement();
     void updateThetaBetaBars();
-    void updateThetaBetaBarsFromEEG(const QVector<double> &values);
+    //void updateThetaBetaBarsFromEEG(const QVector<double> &values);   //von updateThetaBetaBarsFromBandPower ersetzt
+    void updateThetaBetaBarsFromBandPower(const BandPower &bp);
     void updateFocusIndicator(double ratio);
 
-    BandPower      computeBandPower(const QVector<double> &signal, double sampleRate);
+    BandPower       computeBandPower(const QVector<double> &signal, double sampleRate);
     QVector<double> computeMagnitudeSpectrum(const QVector<double> &signal, double sampleRate);
-    void           updateBandPowerPlot(const BandPower &bp);
-    void           updateFftPlot();
+    void            updateBandPowerPlot(const BandPower &bp);
+    void            updateFftPlot();
 
     // Zeitachse
     double                      time = 0.0;
@@ -94,6 +97,11 @@ private:
     QComboBox                 *modeCombo        = nullptr;
     QSpinBox                  *udpPortSpinBox   = nullptr;
 
+    // Filter-Checkboxen
+    QCheckBox                *hpCheckBox       = nullptr;
+    QCheckBox                *notchCheckBox    = nullptr;
+    QCheckBox                *bpCheckBox       = nullptr;
+
     // aktuelle Abtastrate für Zeitachse
     double                     currentSampleRate = 50.0;
 
@@ -102,6 +110,9 @@ private:
 
     // Buffer für Bandpower (z.B. Kanal Fp1)
     QVector<double>            bandPowerBuffer;
+
+    // DSP (Highpass + Notch + Bandlimit)
+    DataProcessingQt          *dataProcessor    = nullptr;
 };
 
 #endif // MAINWINDOW_H

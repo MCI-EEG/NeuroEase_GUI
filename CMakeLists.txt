@@ -41,10 +41,14 @@ set(PROJECT_SOURCES
     FileDataSource.cpp
     electrodemap.h
     electrodemap.cpp
+    DataProcessingQt.h
+    DataProcessingQt.cpp
 )
 #test
 # Executable erzeugen
-add_executable(NeuroEase_GUI ${PROJECT_SOURCES})
+add_executable(NeuroEase_GUI ${PROJECT_SOURCES}
+    DataProcessingQt.h
+    DataProcessingQt.cpp)
 
 target_link_libraries(NeuroEase_GUI PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets

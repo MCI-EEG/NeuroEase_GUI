@@ -6,6 +6,7 @@
 #include "DummyDataSource.h"
 #include "RealDataSource.h"
 #include "FileDataSource.h"
+#include "DataProcessingQt.h"
 
 #include <QWidget>
 #include <QComboBox>
@@ -18,6 +19,8 @@
 #include <QPen>
 #include <QBrush>
 #include <QFont>
+#include <QGroupBox>
+#include <QCheckBox>
 #include <QtMath>
 #include <cmath>
 #include <algorithm>
@@ -36,18 +39,17 @@ MainWindow::MainWindow(QWidget *parent)
     QWidget *central = new QWidget(this);
     setCentralWidget(central);
 
-    // Hauptlayout: links = Time Series, rechts = (BandPower + Head + Theta/Beta + Fokus + FFT)
     mainHorizontalLayout = new QHBoxLayout(central);
 
     // Linke Spalte: Time Series + Controls
     leftColumnLayout = new QVBoxLayout();
     mainHorizontalLayout->addLayout(leftColumnLayout, 8);
 
-    // Rechte Seite: eigener Master-Container
+    // Rechte Seite: Master-Layout
     QVBoxLayout *rightMasterLayout = new QVBoxLayout();
     mainHorizontalLayout->addLayout(rightMasterLayout, 7);
 
-    // Obere Zeile rechts: Mitte (BandPower + Head) & Rechts (Theta/Beta + Fokus)
+    // Oben rechts: Mitte (BandPower + Head) & Rechts (Theta/Beta + Fokus)
     QHBoxLayout *topRowLayout = new QHBoxLayout();
     centerColumnLayout = new QVBoxLayout(); // BandPower + Head
     rightColumnLayout  = new QVBoxLayout(); // Theta/Beta + Fokus
@@ -57,10 +59,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     rightMasterLayout->addLayout(topRowLayout, 4);
 
-    // Unten rechts: FFT-Plot über ganze Breite (Mitte+Rechts)
+    // Unten rechts: FFT-Plot
     fftPlot = new QCustomPlot(this);
     fftPlot->xAxis->setLabel("Frequency (Hz)");
-    fftPlot->yAxis->setLabel("Amplitude (µV)");
+    fftPlot->yAxis->setLabel("Amplitude (a.u.)");
     fftPlot->xAxis->setRange(0, 45);
     fftPlot->yAxis->setRange(0, 1.0);
     rightMasterLayout->addWidget(fftPlot, 2);
@@ -79,10 +81,10 @@ MainWindow::MainWindow(QWidget *parent)
         plot->addGraph();
         plot->graph(0)->setPen(QPen(QColor(colors.value(i))));
         plot->xAxis->setLabel("Time (s)");
-        plot->yAxis->setLabel(QString("%1 (µV)").arg(labels.value(i, QString("Ch%1").arg(i+1))));
+        plot->yAxis->setLabel(QString("%1 (a.u.)").arg(labels.value(i, QString("Ch%1").arg(i+1))));
 
         plot->xAxis->setRange(0, 3);      // 3s Fenster
-        plot->yAxis->setRange(-1.0, 1.0); // Startbereich, wird auto-rescaled
+        plot->yAxis->setRange(-1.0, 1.0); // Startbereich
         plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
         plot->axisRect()->setRangeZoom(Qt::Vertical);
     }
@@ -91,7 +93,6 @@ MainWindow::MainWindow(QWidget *parent)
     for (int i = 0; i < numChannels; ++i)
         channelPhases[i] = QRandomGenerator::global()->generateDouble() * 2 * M_PI;
 
-    // FFT-Buffer initialisieren
     fftBuffers.resize(numChannels);
 
     // -------------------------------------------------------------------------
@@ -127,10 +128,30 @@ MainWindow::MainWindow(QWidget *parent)
     leftColumnLayout->addWidget(resetButton);
 
     // -------------------------------------------------------------------------
+    // Filter-Checkboxen (Highpass, Notch, Bandlimit)
+    // -------------------------------------------------------------------------
+    QGroupBox *filterGroup = new QGroupBox(tr("Filters"), this);
+    QVBoxLayout *filterLayout = new QVBoxLayout(filterGroup);
+
+    hpCheckBox    = new QCheckBox(tr("HP 1 Hz"), filterGroup);
+    notchCheckBox = new QCheckBox(tr("Notch 50 Hz"), filterGroup);
+    bpCheckBox    = new QCheckBox(tr("Bandlimit 1–50 Hz"), filterGroup);
+
+    hpCheckBox->setChecked(true);
+    notchCheckBox->setChecked(true);
+    bpCheckBox->setChecked(true);
+
+    filterLayout->addWidget(hpCheckBox);
+    filterLayout->addWidget(notchCheckBox);
+    filterLayout->addWidget(bpCheckBox);
+
+    leftColumnLayout->addWidget(filterGroup);
+
+    // -------------------------------------------------------------------------
     // Mitte: BandPower (oben) + Head Plot (darunter)
     // -------------------------------------------------------------------------
 
-    // Band Power wie OpenBCI
+    // Band Power
     bandPowerPlot = new QCustomPlot(this);
     bandPowerPlot->setMinimumHeight(220);
 
@@ -162,7 +183,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     centerColumnLayout->addWidget(bandPowerPlot);
 
-    // Head Plot (Topographie)
+    // Head Plot
     electrodePlacementScene = new QGraphicsScene(this);
     electrodePlacementScene->setSceneRect(-150, -150, 300, 300);
 
@@ -175,7 +196,7 @@ MainWindow::MainWindow(QWidget *parent)
     centerColumnLayout->addWidget(electrodePlacementView, 0, Qt::AlignCenter);
 
     // -------------------------------------------------------------------------
-    // Rechts: Theta/Beta-Balkendiagramm (für Fokus) + Fokus-Ampel
+    // Rechts: Theta/Beta-Balkendiagramm + Fokus-Ampel
     // -------------------------------------------------------------------------
     thetaBetaBarPlot = new QCustomPlot(this);
     thetaBetaBarPlot->setMinimumHeight(180);
@@ -213,13 +234,37 @@ MainWindow::MainWindow(QWidget *parent)
     rightColumnLayout->addWidget(focusIndicator, 0, Qt::AlignHCenter);
 
     // -------------------------------------------------------------------------
-    // Datenquelle-Handling
+    // Datenquelle + DataProcessingQt
     // -------------------------------------------------------------------------
     auto connectDataSource = [this](AbstractDataSource *src) {
         if (!src)
             return;
+
+        if (dataSource) {
+            dataSource->stop();
+            dataSource->disconnect(this);
+            dataSource->deleteLater();
+            dataSource = nullptr;
+        }
+
         dataSource = src;
         currentSampleRate = src->sampleRate();
+
+        if (dataProcessor) {
+            delete dataProcessor;
+            dataProcessor = nullptr;
+        }
+
+        bool hpOn = hpCheckBox    ? hpCheckBox->isChecked()    : true;
+        bool ntOn = notchCheckBox ? notchCheckBox->isChecked() : true;
+        bool bpOn = bpCheckBox    ? bpCheckBox->isChecked()    : true;
+
+        dataProcessor = new DataProcessingQt(numChannels,
+                                             currentSampleRate,
+                                             hpOn,
+                                             ntOn,
+                                             bpOn);
+
         connect(src, &AbstractDataSource::newEEGData,
                 this, &MainWindow::handleNewEEGData);
     };
@@ -228,33 +273,37 @@ MainWindow::MainWindow(QWidget *parent)
     connectDataSource(new DummyDataSource(this));
     modeCombo->setCurrentIndex(0);
 
+    // Checkboxen mit DSP verknüpfen
+    connect(hpCheckBox, &QCheckBox::toggled, this, [this](bool on){
+        if (dataProcessor) dataProcessor->setEnableHighpass(on);
+    });
+    connect(notchCheckBox, &QCheckBox::toggled, this, [this](bool on){
+        if (dataProcessor) dataProcessor->setEnableNotch(on);
+    });
+    connect(bpCheckBox, &QCheckBox::toggled, this, [this](bool on){
+        if (dataProcessor) dataProcessor->setEnableBandpass(on);
+    });
+
     // Source-Wechsel
     connect(modeCombo,
             static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
             this,
             [=](int index)
             {
-                if (dataSource) {
-                    dataSource->stop();
-                    dataSource->disconnect(this);
-                    dataSource->deleteLater();
-                    dataSource = nullptr;
-                }
-
-                udpPortSpinBox->setEnabled(index == 1); // nur bei Real
-
                 if (index == 0) {
                     connectDataSource(new DummyDataSource(this));
+                    udpPortSpinBox->setEnabled(false);
                 } else if (index == 1) {
                     auto *real = new RealDataSource(this);
                     real->setUdpPort(static_cast<quint16>(udpPortSpinBox->value()));
                     connectDataSource(real);
+                    udpPortSpinBox->setEnabled(true);
 
                     connect(real, &RealDataSource::udpError,
                             this, [this](const QString &msg) {
                                 QMessageBox::warning(this,
                                                      tr("UDP error"),
-                                                     msg);
+                                                     msg + "\nMeasurement stopped.");
                                 if (dataSource)
                                     dataSource->stop();
                             });
@@ -272,6 +321,7 @@ MainWindow::MainWindow(QWidget *parent)
                         return;
                     }
                     connectDataSource(new FileDataSource(fileName, this));
+                    udpPortSpinBox->setEnabled(false);
                 }
 
                 resetPlots();
@@ -309,14 +359,19 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(resetButton, &QPushButton::clicked, this, &MainWindow::resetPlots);
 
-    // Erste Darstellung
     updateElectrodePlacement();
     updateThetaBetaBars();
     updateBandPowerPlot(BandPower{0,0,0,0,0});
     updateFocusIndicator(0.0);
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    if (dataProcessor) {
+        delete dataProcessor;
+        dataProcessor = nullptr;
+    }
+}
 
 // -----------------------------------------------------------------------------
 // Daten-Callback
@@ -332,54 +387,65 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
 
     const double windowSec = 3.0;
 
-    // Time-Series Plots
-    for (int i = 0; i < numChannels && i < values.size(); ++i) {
+    // ---- erst filtern (Highpass + Notch + Bandlimit) ----
+    QVector<double> filtered = values;
+    if (dataProcessor) {
+        for (int ch = 0; ch < numChannels && ch < filtered.size(); ++ch) {
+            filtered[ch] = dataProcessor->processSample(ch, filtered[ch]);
+        }
+    }
+
+    // ---- Time-Series Plots mit gefilterten Daten ----
+    for (int i = 0; i < numChannels && i < filtered.size(); ++i) {
         QCustomPlot *plot = channelPlots[i];
         if (!plot || plot->graphCount() == 0)
             continue;
 
-        plot->graph(0)->addData(time, values[i]);
+        plot->graph(0)->addData(time, filtered[i]);
         plot->graph(0)->data()->removeBefore(time - windowSec);
         plot->xAxis->setRange(time - windowSec, time);
 
-        // Y-Achse automatisch an sichtbare Daten anpassen
         plot->graph(0)->rescaleValueAxis(false, true);
-
         plot->replot(QCustomPlot::rpQueuedReplot);
     }
 
-    // Theta/Beta Ratio aus den aktuellen Werten
-    updateThetaBetaBarsFromEEG(values);
+    // Theta/Beta Ratio aus gefilterten Werten
+    //updateThetaBetaBarsFromEEG(filtered); //auskommentiert da nun updateThetaBetaBarsFromBandPower verwendet wird
 
-    // ---- Bandpower-Buffer (z.B. Kanal 0 / Fp1) füllen ----
-    bandPowerBuffer.append(values[0]);  // Kanal 0
-    int maxSamples = int(currentSampleRate * windowSec);
-    if (bandPowerBuffer.size() > maxSamples) {
-        bandPowerBuffer.remove(0, bandPowerBuffer.size() - maxSamples);
+    // ---- Bandpower-Buffer (Kanal 0 / Fp1) ----
+    if (!filtered.isEmpty()) {
+        bandPowerBuffer.append(filtered[0]);
+        int maxSamples = int(currentSampleRate * windowSec);
+        if (bandPowerBuffer.size() > maxSamples) {
+            bandPowerBuffer.remove(0, bandPowerBuffer.size() - maxSamples);
+        }
     }
 
-    // ---- FFT-Buffer für alle Kanäle füllen ----
-    for (int ch = 0; ch < numChannels && ch < values.size(); ++ch) {
-        fftBuffers[ch].append(values[ch]);
+    // ---- FFT-Buffer für alle Kanäle ----
+    int maxSamples = int(currentSampleRate * windowSec);
+    for (int ch = 0; ch < numChannels && ch < filtered.size(); ++ch) {
+        fftBuffers[ch].append(filtered[ch]);
         if (fftBuffers[ch].size() > maxSamples) {
             fftBuffers[ch].remove(0, fftBuffers[ch].size() - maxSamples);
         }
     }
 
-    // Bandpower und FFT nur alle ~0.25 s aktualisieren
-    static double accumBP  = 0.0;
-    static double accumFft = 0.0;
+    static double accumBP   = 0.0;
+    static double accumFft  = 0.0;
     static double accumHead = 0.0;
 
-    accumBP  += dt;
-    accumFft += dt;
+    accumBP   += dt;
+    accumFft  += dt;
     accumHead += dt;
 
-    if (accumBP > 0.25 && bandPowerBuffer.size() >= maxSamples) {
+    // alle 1.0 s statt alle 0.25 s
+    if (accumBP > 1.0 && bandPowerBuffer.size() >= maxSamples) {
         BandPower bp = computeBandPower(bandPowerBuffer, currentSampleRate);
         updateBandPowerPlot(bp);
+        updateThetaBetaBarsFromBandPower(bp);
         accumBP = 0.0;
     }
+
 
     bool fftReady = true;
     for (int ch = 0; ch < numChannels; ++ch) {
@@ -388,12 +454,11 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
             break;
         }
     }
-    if (accumFft > 0.25 && fftReady) {
+    if (accumFft > 1.0 && fftReady) {
         updateFftPlot();
         accumFft = 0.0;
     }
 
-    // Head/Topographie alle ~0.1 s
     if (accumHead > 0.1) {
         updateElectrodePlacement();
         accumHead = 0.0;
@@ -422,6 +487,9 @@ void MainWindow::resetPlots()
     bandPowerBuffer.clear();
     for (auto &buf : fftBuffers)
         buf.clear();
+
+    if (dataProcessor)
+        dataProcessor->reset();
 
     updateElectrodePlacement();
     updateThetaBetaBars();
@@ -575,24 +643,55 @@ void MainWindow::updateThetaBetaBars()
 // Theta/Beta Balken aus EEG-Werten
 // -----------------------------------------------------------------------------
 
-void MainWindow::updateThetaBetaBarsFromEEG(const QVector<double> &values)
+// void MainWindow::updateThetaBetaBarsFromEEG(const QVector<double> &values)
+// {
+//     if (values.size() < 2)
+//         return;
+
+//     double thetaAmp = std::abs(values[0]);
+//     double betaAmp  = std::abs(values[1]);
+
+//     double t = qBound(0.0, thetaAmp, 1.2);
+//     double b = qBound(0.0, betaAmp,  1.2);
+
+//     QVector<double> ticks{1.0, 2.0};
+//     QVector<double> vals {t,   b  };
+
+//     thetaBetaBars->setData(ticks, vals);
+//     thetaBetaBarPlot->replot(QCustomPlot::rpQueuedReplot);
+
+//     double ratio = (b > 1e-6) ? t / b : 0.0;
+//     updateFocusIndicator(ratio);
+// }
+
+void MainWindow::updateThetaBetaBarsFromBandPower(const BandPower &bp)
 {
-    if (values.size() < 2)
+    double theta = bp.theta;
+    double beta  = bp.beta;
+
+    if (theta <= 0.0 && beta <= 0.0) {
+        QVector<double> ticks{1.0, 2.0};
+        QVector<double> vals {0.0, 0.0};
+        thetaBetaBars->setData(ticks, vals);
+        thetaBetaBarPlot->replot(QCustomPlot::rpQueuedReplot);
+        updateFocusIndicator(0.0);
         return;
+    }
 
-    double thetaAmp = std::abs(values[0]);
-    double betaAmp  = std::abs(values[1]);
-
-    double t = qBound(0.0, thetaAmp, 1.2);
-    double b = qBound(0.0, betaAmp,  1.2);
+    // Relativ normalisieren (Summe = 1)
+    double sum   = theta + beta;
+    double tNorm = theta / sum;
+    double bNorm = beta  / sum;
 
     QVector<double> ticks{1.0, 2.0};
-    QVector<double> vals {t,   b  };
+    QVector<double> vals {tNorm, bNorm};
 
     thetaBetaBars->setData(ticks, vals);
+    thetaBetaBarPlot->yAxis->setRange(0, 1.2);
     thetaBetaBarPlot->replot(QCustomPlot::rpQueuedReplot);
 
-    double ratio = (b > 1e-6) ? t / b : 0.0;
+    // Fokus: echtes Theta/Beta Verhältnis
+    double ratio = (beta > 1e-9) ? theta / beta : 0.0;
     updateFocusIndicator(ratio);
 }
 
@@ -619,20 +718,25 @@ QVector<double> MainWindow::computeMagnitudeSpectrum(
     const QVector<double> &signal,
     double sampleRate)
 {
-    int N = signal.size();
-    if (N < 32 || sampleRate <= 0.0)
+    int Ntotal = signal.size();
+    if (Ntotal < 32 || sampleRate <= 0.0)
         return {};
 
-    // DC-Offset entfernen
+    // wir nehmen nur die letzten maxN Samples (z.B. 512)
+    const int maxN = 512;
+    int N = qMin(Ntotal, maxN);
+    int start = Ntotal - N;
+
+    // Mittelwert nur über das Fenster bilden
     double mean = 0.0;
-    for (double v : signal)
-        mean += v;
+    for (int n = 0; n < N; ++n)
+        mean += signal[start + n];
     mean /= double(N);
 
     QVector<std::complex<double>> x;
     x.reserve(N);
     for (int n = 0; n < N; ++n) {
-        double centered = signal[n] - mean;
+        double centered = signal[start + n] - mean;
         double w = 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (N - 1))); // Hann
         x.append(std::complex<double>(centered * w, 0.0));
     }

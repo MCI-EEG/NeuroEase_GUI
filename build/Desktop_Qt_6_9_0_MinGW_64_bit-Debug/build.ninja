@@ -121,6 +121,14 @@ build CMakeFiles/NeuroEase_GUI.dir/electrodemap.cpp.obj: CXX_COMPILER__NeuroEase
   OBJECT_DIR = CMakeFiles\NeuroEase_GUI.dir
   OBJECT_FILE_DIR = CMakeFiles\NeuroEase_GUI.dir
 
+build CMakeFiles/NeuroEase_GUI.dir/DataProcessingQt.cpp.obj: CXX_COMPILER__NeuroEase_GUI_unscanned_Debug C$:/Users/osoys/Documents/NeuroEase_GUI/DataProcessingQt.cpp || cmake_object_order_depends_target_NeuroEase_GUI
+  DEFINES = -DMINGW_HAS_SECURE_API=1 -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NEEDS_QMAIN -DQT_NETWORK_LIB -DQT_PRINTSUPPORT_LIB -DQT_SERIALPORT_LIB -DQT_WIDGETS_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64
+  DEP_FILE = CMakeFiles\NeuroEase_GUI.dir\DataProcessingQt.cpp.obj.d
+  FLAGS = -DQT_QML_DEBUG -g -std=gnu++17 -fdiagnostics-color=always
+  INCLUDES = -IC:/Users/osoys/Documents/NeuroEase_GUI/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/NeuroEase_GUI_autogen/include -isystem C:/Qt/6.9.1/mingw_64/include/QtWidgets -isystem C:/Qt/6.9.1/mingw_64/include -isystem C:/Qt/6.9.1/mingw_64/include/QtCore -isystem C:/Qt/6.9.1/mingw_64/mkspecs/win32-g++ -isystem C:/Qt/6.9.1/mingw_64/include/QtGui -isystem C:/Qt/6.9.1/mingw_64/include/QtPrintSupport -isystem C:/Qt/6.9.1/mingw_64/include/QtNetwork -isystem C:/Qt/6.9.1/mingw_64/include/QtSerialPort
+  OBJECT_DIR = CMakeFiles\NeuroEase_GUI.dir
+  OBJECT_FILE_DIR = CMakeFiles\NeuroEase_GUI.dir
+
 
 # =============================================================================
 # Link build statements for EXECUTABLE target NeuroEase_GUI
@@ -129,7 +137,7 @@ build CMakeFiles/NeuroEase_GUI.dir/electrodemap.cpp.obj: CXX_COMPILER__NeuroEase
 #############################################
 # Link the executable NeuroEase_GUI.exe
 
-build NeuroEase_GUI.exe: CXX_EXECUTABLE_LINKER__NeuroEase_GUI_Debug CMakeFiles/NeuroEase_GUI.dir/NeuroEase_GUI_autogen/mocs_compilation.cpp.obj CMakeFiles/NeuroEase_GUI.dir/main.cpp.obj CMakeFiles/NeuroEase_GUI.dir/mainwindow.cpp.obj CMakeFiles/NeuroEase_GUI.dir/qcustomplot.cpp.obj CMakeFiles/NeuroEase_GUI.dir/zoomablegraphicsview.cpp.obj CMakeFiles/NeuroEase_GUI.dir/DummyDataSource.cpp.obj CMakeFiles/NeuroEase_GUI.dir/RealDataSource.cpp.obj CMakeFiles/NeuroEase_GUI.dir/FileDataSource.cpp.obj CMakeFiles/NeuroEase_GUI.dir/electrodemap.cpp.obj | C$:/Qt/6.9.1/mingw_64/lib/libQt6PrintSupport.a C$:/Qt/6.9.1/mingw_64/lib/libQt6Network.a C$:/Qt/6.9.1/mingw_64/lib/libQt6SerialPort.a C$:/Qt/6.9.1/mingw_64/lib/libQt6Widgets.a C$:/Qt/6.9.1/mingw_64/lib/libQt6Gui.a C$:/Qt/6.9.1/mingw_64/lib/libQt6Core.a C$:/Qt/6.9.1/mingw_64/lib/libQt6EntryPoint.a || NeuroEase_GUI_autogen NeuroEase_GUI_autogen_timestamp_deps
+build NeuroEase_GUI.exe: CXX_EXECUTABLE_LINKER__NeuroEase_GUI_Debug CMakeFiles/NeuroEase_GUI.dir/NeuroEase_GUI_autogen/mocs_compilation.cpp.obj CMakeFiles/NeuroEase_GUI.dir/main.cpp.obj CMakeFiles/NeuroEase_GUI.dir/mainwindow.cpp.obj CMakeFiles/NeuroEase_GUI.dir/qcustomplot.cpp.obj CMakeFiles/NeuroEase_GUI.dir/zoomablegraphicsview.cpp.obj CMakeFiles/NeuroEase_GUI.dir/DummyDataSource.cpp.obj CMakeFiles/NeuroEase_GUI.dir/RealDataSource.cpp.obj CMakeFiles/NeuroEase_GUI.dir/FileDataSource.cpp.obj CMakeFiles/NeuroEase_GUI.dir/electrodemap.cpp.obj CMakeFiles/NeuroEase_GUI.dir/DataProcessingQt.cpp.obj | C$:/Qt/6.9.1/mingw_64/lib/libQt6PrintSupport.a C$:/Qt/6.9.1/mingw_64/lib/libQt6Network.a C$:/Qt/6.9.1/mingw_64/lib/libQt6SerialPort.a C$:/Qt/6.9.1/mingw_64/lib/libQt6Widgets.a C$:/Qt/6.9.1/mingw_64/lib/libQt6Gui.a C$:/Qt/6.9.1/mingw_64/lib/libQt6Core.a C$:/Qt/6.9.1/mingw_64/lib/libQt6EntryPoint.a || NeuroEase_GUI_autogen NeuroEase_GUI_autogen_timestamp_deps
   FLAGS = -DQT_QML_DEBUG -g
   LINK_FLAGS = -mwindows
   LINK_LIBRARIES = C:/Qt/6.9.1/mingw_64/lib/libQt6PrintSupport.a  C:/Qt/6.9.1/mingw_64/lib/libQt6Network.a  C:/Qt/6.9.1/mingw_64/lib/libQt6SerialPort.a  C:/Qt/6.9.1/mingw_64/lib/libQt6Widgets.a  C:/Qt/6.9.1/mingw_64/lib/libQt6Gui.a  -ld3d11  -ldxgi  -ldxguid  -ld3d12  -lcomdlg32  -lwinspool  -lws2_32  C:/Qt/6.9.1/mingw_64/lib/libQt6Core.a  -lmpr  -luserenv  -lmingw32  C:/Qt/6.9.1/mingw_64/lib/libQt6EntryPoint.a  -lshell32  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32

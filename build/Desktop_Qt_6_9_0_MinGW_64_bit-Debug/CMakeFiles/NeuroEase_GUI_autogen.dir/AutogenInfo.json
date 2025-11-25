@@ -454,6 +454,12 @@
 			null
 		],
 		[
+			"C:/Users/osoys/Documents/NeuroEase_GUI/DataProcessingQt.h",
+			"Mu",
+			"EWIEGA46WW/moc_DataProcessingQt.cpp",
+			null
+		],
+		[
 			"C:/Users/osoys/Documents/NeuroEase_GUI/DummyDataSource.h",
 			"Mu",
 			"EWIEGA46WW/moc_DummyDataSource.cpp",
@@ -573,6 +579,11 @@
 	"SETTINGS_FILE" : "C:/Users/osoys/Documents/NeuroEase_GUI/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/CMakeFiles/NeuroEase_GUI_autogen.dir/AutogenUsed.txt",
 	"SOURCES" : 
 	[
+		[
+			"C:/Users/osoys/Documents/NeuroEase_GUI/DataProcessingQt.cpp",
+			"Mu",
+			null
+		],
 		[
 			"C:/Users/osoys/Documents/NeuroEase_GUI/DummyDataSource.cpp",
 			"Mu",
