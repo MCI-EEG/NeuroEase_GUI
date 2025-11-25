@@ -1,0 +1,16 @@
+# ninja log v6
+45	239	7853780595455901	NeuroEase_GUI_autogen/timestamp	d1fb9e820c8586f1
+1515	2690	7853712257535178	CMakeFiles/NeuroEase_GUI.dir/RealDataSource.cpp.obj	e83c3a9d83ec6891
+45	239	7853780595455901	NeuroEase_GUI_autogen/mocs_compilation.cpp	d1fb9e820c8586f1
+45	239	7853780595455901	C:/Users/osoys/Documents/NeuroEase_GUI/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/NeuroEase_GUI_autogen/timestamp	d1fb9e820c8586f1
+45	239	7853780595455901	C:/Users/osoys/Documents/NeuroEase_GUI/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/NeuroEase_GUI_autogen/mocs_compilation.cpp	d1fb9e820c8586f1
+2884	5648	7853690208064124	CMakeFiles/NeuroEase_GUI.dir/DummyDataSource.cpp.obj	a23c78631bcfe3b6
+2881	5805	7853685332216561	CMakeFiles/NeuroEase_GUI.dir/zoomablegraphicsview.cpp.obj	ce25a01f3a2e95ed
+2897	5714	7853685332377109	CMakeFiles/NeuroEase_GUI.dir/electrodemap.cpp.obj	64e8c6c649352198
+643	1880	7853779543430062	CMakeFiles/NeuroEase_GUI.dir/main.cpp.obj	25b50984c978084
+239	4497	7853780597396879	CMakeFiles/NeuroEase_GUI.dir/mainwindow.cpp.obj	c5d2aa0fbe8230a2
+640	8645	7853779543400054	CMakeFiles/NeuroEase_GUI.dir/NeuroEase_GUI_autogen/mocs_compilation.cpp.obj	79ade0a7d6b0e94d
+2875	32804	7853685332157013	CMakeFiles/NeuroEase_GUI.dir/qcustomplot.cpp.obj	27d6ac6b92872a5c
+4497	37421	7853780639972153	NeuroEase_GUI.exe	1af9a25ce1c47fcd
+34	1105	7857617031954032	build.ninja	6ecf46f2a92cbea7
+429	2996	7853691453640997	CMakeFiles/NeuroEase_GUI.dir/FileDataSource.cpp.obj	6e16720150236d21

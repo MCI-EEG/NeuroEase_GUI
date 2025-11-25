@@ -1,0 +1,79 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Debug-28e39e6d40b6ab77e1d4.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "NeuroEase_GUI",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "NeuroEase_GUI::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-NeuroEase_GUI-Debug-d6853c0dfb5d902e6925.json",
+					"name" : "NeuroEase_GUI",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "NeuroEase_GUI_autogen::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-NeuroEase_GUI_autogen-Debug-08890dedd4eaf839b463.json",
+					"name" : "NeuroEase_GUI_autogen",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "NeuroEase_GUI_autogen_timestamp_deps::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-NeuroEase_GUI_autogen_timestamp_deps-Debug-0efe04801e8aee4f26c6.json",
+					"name" : "NeuroEase_GUI_autogen_timestamp_deps",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "C:/Users/osoys/Documents/NeuroEase_GUI/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug",
+		"source" : "C:/Users/osoys/Documents/NeuroEase_GUI"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 7
+	}
+}
