@@ -48,6 +48,7 @@ private:
     QVector<double> computeMagnitudeSpectrum(const QVector<double> &signal, double sampleRate);
     void            updateBandPowerPlot(const BandPower &bp);
     void            updateFftPlot();
+    void            updatePlotDecimation();
 
     // Zeitachse
     double                      time = 0.0;
@@ -102,6 +103,8 @@ private:
 
     // aktuelle Abtastrate für Zeitachse
     double                     currentSampleRate = 50.0;
+    int                        plotDownsampleFactor = 1;
+    int                        plotSampleCounter = 0;
 
     // Kontroll-Flag für Elektroden-Check
     bool                       placementConfirmed = false;

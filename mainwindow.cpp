@@ -250,6 +250,8 @@ MainWindow::MainWindow(QWidget *parent)
 
         dataSource = src;
         currentSampleRate = src->sampleRate();
+        updatePlotDecimation();
+        plotSampleCounter = 0;
 
         if (dataProcessor) {
             delete dataProcessor;
@@ -386,6 +388,13 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
     const double dt =
         (currentSampleRate > 0.0) ? (1.0 / currentSampleRate) : 0.02;
 
+    ++plotSampleCounter;
+    bool allowPlotSample = false;
+    if (plotSampleCounter >= plotDownsampleFactor) {
+        allowPlotSample = true;
+        plotSampleCounter = 0;
+    }
+
     const double windowSec = 3.0;
 
     // Plot-Updates drosseln (~30 Hz Redraw)
@@ -407,13 +416,15 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
         if (!plot || plot->graphCount() == 0)
             continue;
 
-        plot->graph(0)->addData(time, filtered[i]);
-        plot->graph(0)->data()->removeBefore(time - windowSec);
+        if (allowPlotSample) {
+            plot->graph(0)->addData(time, filtered[i]);
+            plot->graph(0)->data()->removeBefore(time - windowSec);
 
-        if (doPlotUpdate) {
-            plot->xAxis->setRange(time - windowSec, time);
-            plot->graph(0)->rescaleValueAxis(false, true);
-            plot->replot(QCustomPlot::rpQueuedReplot);
+            if (doPlotUpdate) {
+                plot->xAxis->setRange(time - windowSec, time);
+                plot->graph(0)->rescaleValueAxis(false, true);
+                plot->replot(QCustomPlot::rpQueuedReplot);
+            }
         }
     }
     if (doPlotUpdate) {
@@ -492,6 +503,7 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
 void MainWindow::resetPlots()
 {
     time = 0.0;
+    plotSampleCounter = 0;
 
     for (auto *plot : channelPlots) {
         if (!plot || plot->graphCount() == 0)
@@ -902,4 +914,19 @@ void MainWindow::updateFftPlot()
     fftPlot->yAxis->setRange(0, globalMax * 1.2);
 
     fftPlot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+// -----------------------------------------------------------------------------
+// Plot-Decimation abhängig von Abtastrate
+// -----------------------------------------------------------------------------
+
+void MainWindow::updatePlotDecimation()
+{
+    const double targetPlotRate = 120.0; // maximale Plot-Samples pro Sekunde
+    if (currentSampleRate <= 0.0) {
+        plotDownsampleFactor = 1;
+        return;
+    }
+
+    plotDownsampleFactor = qMax(1, int(std::lround(currentSampleRate / targetPlotRate)));
 }
