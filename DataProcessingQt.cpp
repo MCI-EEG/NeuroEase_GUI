@@ -60,7 +60,6 @@ double DataProcessingQt::processSample(int channelIndex, double x)
 void DataProcessingQt::setEnableHighpass(bool on)
 {
     m_enableHighpass = on;
-    // Optional: Reset zur Vermeidung von Artefakten beim Umschalten
     for (auto &b : m_hpFilters) b.reset();
 }
 
@@ -92,7 +91,7 @@ void DataProcessingQt::designFilters()
     // 1 Hz Highpass, Q ~ 0.707 (Butterworth-artig)
     Biquad hp = makeHighpass(m_sampleRate, 1.0, 0.707);
 
-    // 50 Hz Notch, schmal (Q ~ 30)
+    // 50 Hz Notch, relativ schmal (Q ~ 30)
     Biquad notch = makeNotch(m_sampleRate, 50.0, 30.0);
 
     // 50 Hz Lowpass, Q ~ 0.707 (2. Ordnung Butterworth)

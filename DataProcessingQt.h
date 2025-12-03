@@ -4,13 +4,12 @@
 #include <QVector>
 
 /**
- * Kleine DSP-Hilfsklasse für EEG:
+ * DSP-Hilfsklasse für EEG:
  * - 1 Hz Highpass (Drift entfernen)
  * - 50 Hz Notch (Netzbrummen)
- * - 50 Hz Lowpass (zusammen mit HP = Bandpass 1–50 Hz)
+ * - 50 Hz Lowpass (zusammen mit HP ≈ Bandpass 1–50 Hz)
  *
- * Filter sind als Biquads (2. Ordnung IIR) implementiert
- * nach den RBJ Audio EQ Cookbook Formeln.
+ * Alle Filter als Biquads (2. Ordnung IIR) nach RBJ Audio EQ Cookbook.
  */
 class DataProcessingQt
 {

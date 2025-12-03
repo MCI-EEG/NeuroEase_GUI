@@ -94,6 +94,7 @@ MainWindow::MainWindow(QWidget *parent)
         channelPhases[i] = QRandomGenerator::global()->generateDouble() * 2 * M_PI;
 
     fftBuffers.resize(numChannels);
+    headBuffers.resize(numChannels);
 
     // -------------------------------------------------------------------------
     // Links unten: Data source + UDP-Port + Start/Stop/Reset
@@ -387,6 +388,11 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
 
     const double windowSec = 3.0;
 
+    // Plot-Updates drosseln (~30 Hz Redraw)
+    static double accumPlots = 0.0;
+    accumPlots += dt;
+    bool doPlotUpdate = (accumPlots >= 1.0 / 30.0);
+
     // ---- erst filtern (Highpass + Notch + Bandlimit) ----
     QVector<double> filtered = values;
     if (dataProcessor) {
@@ -403,14 +409,16 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
 
         plot->graph(0)->addData(time, filtered[i]);
         plot->graph(0)->data()->removeBefore(time - windowSec);
-        plot->xAxis->setRange(time - windowSec, time);
 
-        plot->graph(0)->rescaleValueAxis(false, true);
-        plot->replot(QCustomPlot::rpQueuedReplot);
+        if (doPlotUpdate) {
+            plot->xAxis->setRange(time - windowSec, time);
+            plot->graph(0)->rescaleValueAxis(false, true);
+            plot->replot(QCustomPlot::rpQueuedReplot);
+        }
     }
-
-    // Theta/Beta Ratio aus gefilterten Werten
-    //updateThetaBetaBarsFromEEG(filtered); //auskommentiert da nun updateThetaBetaBarsFromBandPower verwendet wird
+    if (doPlotUpdate) {
+        accumPlots = 0.0;
+    }
 
     // ---- Bandpower-Buffer (Kanal 0 / Fp1) ----
     if (!filtered.isEmpty()) {
@@ -421,12 +429,21 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
         }
     }
 
-    // ---- FFT-Buffer für alle Kanäle ----
+    // ---- FFT-Buffer & Head-Buffer für alle Kanäle ----
     int maxSamples = int(currentSampleRate * windowSec);
+    int headMaxSamples = int(currentSampleRate * 2.0);   // 2 Sekunden Fenster für Head-Plot
+
     for (int ch = 0; ch < numChannels && ch < filtered.size(); ++ch) {
+        // FFT
         fftBuffers[ch].append(filtered[ch]);
         if (fftBuffers[ch].size() > maxSamples) {
             fftBuffers[ch].remove(0, fftBuffers[ch].size() - maxSamples);
+        }
+
+        // Head-Plot RMS
+        headBuffers[ch].append(filtered[ch]);
+        if (headBuffers[ch].size() > headMaxSamples) {
+            headBuffers[ch].remove(0, headBuffers[ch].size() - headMaxSamples);
         }
     }
 
@@ -438,7 +455,7 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
     accumFft  += dt;
     accumHead += dt;
 
-    // alle 1.0 s statt alle 0.25 s
+    // Bandpower + Theta/Beta: 1x pro Sekunde
     if (accumBP > 1.0 && bandPowerBuffer.size() >= maxSamples) {
         BandPower bp = computeBandPower(bandPowerBuffer, currentSampleRate);
         updateBandPowerPlot(bp);
@@ -446,7 +463,7 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
         accumBP = 0.0;
     }
 
-
+    // FFT: 1x pro Sekunde
     bool fftReady = true;
     for (int ch = 0; ch < numChannels; ++ch) {
         if (fftBuffers[ch].size() < maxSamples) {
@@ -459,7 +476,8 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
         accumFft = 0.0;
     }
 
-    if (accumHead > 0.1) {
+    // Head-Plot: 2x pro Sekunde
+    if (accumHead > 0.5) {
         updateElectrodePlacement();
         accumHead = 0.0;
     }
@@ -487,6 +505,8 @@ void MainWindow::resetPlots()
     bandPowerBuffer.clear();
     for (auto &buf : fftBuffers)
         buf.clear();
+    for (auto &buf : headBuffers)
+        buf.clear();
 
     if (dataProcessor)
         dataProcessor->reset();
@@ -499,7 +519,7 @@ void MainWindow::resetPlots()
 }
 
 // -----------------------------------------------------------------------------
-// Elektroden-Heatmap
+// Elektroden-Heatmap (RMS-Aktivität aus headBuffers)
 // -----------------------------------------------------------------------------
 
 void MainWindow::updateElectrodePlacement()
@@ -534,7 +554,7 @@ void MainWindow::updateElectrodePlacement()
     nose.closeSubpath();
     electrodePlacementScene->addPath(nose, headPen);
 
-    // Elektroden
+    // Elektroden-Positionen
     QStringList labels = { "Fp1","Fp2","F7","F8","Fz","Pz","T5","T6","Ref" };
     QVector<QPointF> pos = {
         { c.x() - headR * 0.25, c.y() - headR * 0.90 }, // Fp1
@@ -548,32 +568,47 @@ void MainWindow::updateElectrodePlacement()
         { c.x(),                c.y() }                 // Ref
     };
 
-    QVector<double> activities;
-    activities.reserve(numChannels);
+    // Aktivitäten aus Head-Buffern: RMS der letzten ~2s
+    QVector<double> activities(numChannels, 0.0);
+    double maxAct = 0.0;
 
-    for (int i = 0; i < numChannels; ++i) {
-        double a = 0.0;
-        if (i < channelPlots.size() && channelPlots[i]->graphCount() > 0) {
-            auto data = channelPlots[i]->graph(0)->data();
-            if (!data->isEmpty()) {
-                int sz = data->size();
-                a = std::abs(data->at(sz - 1)->value);
-            }
-        }
-        activities.append(a);
+    for (int ch = 0; ch < numChannels; ++ch) {
+        const auto &buf = headBuffers[ch];
+        if (buf.isEmpty())
+            continue;
+
+        double sumSq = 0.0;
+        for (double v : buf)
+            sumSq += v * v;
+
+        double rms = std::sqrt(sumSq / double(buf.size()));
+        activities[ch] = rms;
+        if (rms > maxAct)
+            maxAct = rms;
     }
+
+    // Normierung auf 0..1
+    if (maxAct > 0.0) {
+        for (double &a : activities)
+            a /= maxAct;
+    }
+
+    // Falls activities noch zu kurz ist, mit Nullen auffüllen
     while (activities.size() < pos.size())
         activities.append(0.0);
 
-    const double step = 4.0;
+    // Heatmap zeichnen (gröberes Raster für Performance)
+    const double step = 8.0;
     for (double x = -150; x <= 150; x += step) {
         for (double y = -150; y <= 150; y += step) {
 
+            // nur innerhalb des Kopf-Ellipsoids zeichnen
             double e = (x * x) / (headR * headR)
-            + (y * y) / ((1.1 * headR) * (1.1 * headR));
+                       + (y * y) / ((1.1 * headR) * (1.1 * headR));
             if (e > 1.0)
                 continue;
 
+            // Inverse Distance Weighting der Kanalaktivitäten
             double sumW = 0.0;
             double sumA = 0.0;
 
@@ -591,7 +626,7 @@ void MainWindow::updateElectrodePlacement()
 
             int r = int(255 * val);
             int g = int(255 * (1.0 - val));
-            QColor col(r, g, 0, 120);
+            QColor col(r, g, 0, 140);
 
             QRectF rect(x, y, step, step);
             electrodePlacementScene->addRect(rect, Qt::NoPen, QBrush(col));
@@ -640,29 +675,8 @@ void MainWindow::updateThetaBetaBars()
 }
 
 // -----------------------------------------------------------------------------
-// Theta/Beta Balken aus EEG-Werten
+// Theta/Beta Balken aus Bandpower
 // -----------------------------------------------------------------------------
-
-// void MainWindow::updateThetaBetaBarsFromEEG(const QVector<double> &values)
-// {
-//     if (values.size() < 2)
-//         return;
-
-//     double thetaAmp = std::abs(values[0]);
-//     double betaAmp  = std::abs(values[1]);
-
-//     double t = qBound(0.0, thetaAmp, 1.2);
-//     double b = qBound(0.0, betaAmp,  1.2);
-
-//     QVector<double> ticks{1.0, 2.0};
-//     QVector<double> vals {t,   b  };
-
-//     thetaBetaBars->setData(ticks, vals);
-//     thetaBetaBarPlot->replot(QCustomPlot::rpQueuedReplot);
-
-//     double ratio = (b > 1e-6) ? t / b : 0.0;
-//     updateFocusIndicator(ratio);
-// }
 
 void MainWindow::updateThetaBetaBarsFromBandPower(const BandPower &bp)
 {
@@ -722,36 +736,38 @@ QVector<double> MainWindow::computeMagnitudeSpectrum(
     if (Ntotal < 32 || sampleRate <= 0.0)
         return {};
 
-    // wir nehmen nur die letzten maxN Samples (z.B. 512)
+    // Nur die letzten maxN Samples verwenden (z.B. 512)
     const int maxN = 512;
-    int N = qMin(Ntotal, maxN);
+    int N     = qMin(Ntotal, maxN);
     int start = Ntotal - N;
 
-    // Mittelwert nur über das Fenster bilden
+    // Mittelwert über das Fenster entfernen
     double mean = 0.0;
     for (int n = 0; n < N; ++n)
         mean += signal[start + n];
     mean /= double(N);
 
-    QVector<std::complex<double>> x;
-    x.reserve(N);
-    for (int n = 0; n < N; ++n) {
-        double centered = signal[start + n] - mean;
-        double w = 0.5 * (1.0 - std::cos(2.0 * M_PI * n / (N - 1))); // Hann
-        x.append(std::complex<double>(centered * w, 0.0));
-    }
-
     int K = N / 2;
     QVector<double> magSpec(K);
 
     for (int k = 0; k < K; ++k) {
-        std::complex<double> sum(0.0, 0.0);
+        double real = 0.0;
+        double imag = 0.0;
+
         double angBase = -2.0 * M_PI * k / double(N);
+
         for (int n = 0; n < N; ++n) {
+            // Hahn-Fenster + DC-Entfernung
+            double centered = signal[start + n] - mean;
+            double w        = 0.5 * (1.0 - qCos(2.0 * M_PI * n / (N - 1)));
+            double sample   = centered * w;
+
             double ang = angBase * n;
-            sum += x[n] * std::complex<double>(std::cos(ang), std::sin(ang));
+            real += sample * qCos(ang);
+            imag += sample * qSin(ang);
         }
-        magSpec[k] = std::abs(sum) / double(N);
+
+        magSpec[k] = qSqrt(real * real + imag * imag) / double(N);
     }
 
     return magSpec;
@@ -844,6 +860,7 @@ void MainWindow::updateFftPlot()
     if (N < 32)
         return;
 
+    // Frequenzachse nach aktuellem N
     int K = N / 2;
     double hzPerBin = currentSampleRate / double(N);
 

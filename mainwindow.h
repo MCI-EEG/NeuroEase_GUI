@@ -8,16 +8,15 @@
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QGraphicsScene>
-#include <complex>
 
 class QComboBox;
 class QSpinBox;
+class QCheckBox;
 class QCustomPlot;
 class QCPBars;
 class ZoomableGraphicsView;
 class AbstractDataSource;
 class DataProcessingQt;
-class QCheckBox;
 
 class MainWindow : public QMainWindow
 {
@@ -41,8 +40,7 @@ private:
     };
 
     void updateElectrodePlacement();
-    void updateThetaBetaBars();
-    //void updateThetaBetaBarsFromEEG(const QVector<double> &values);   //von updateThetaBetaBarsFromBandPower ersetzt
+    void updateThetaBetaBars();                        // Default Balken
     void updateThetaBetaBarsFromBandPower(const BandPower &bp);
     void updateFocusIndicator(double ratio);
 
@@ -110,6 +108,9 @@ private:
 
     // Buffer für Bandpower (z.B. Kanal Fp1)
     QVector<double>            bandPowerBuffer;
+
+    // Buffer für Head-Plot (RMS-Aktivität pro Kanal)
+    QVector<QVector<double>>   headBuffers;
 
     // DSP (Highpass + Notch + Bandlimit)
     DataProcessingQt          *dataProcessor    = nullptr;
