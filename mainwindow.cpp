@@ -16,6 +16,7 @@
 #include <QRandomGenerator>
 #include <QMessageBox>
 #include <QFileDialog>
+#include <QGraphicsPixmapItem>
 #include <QPen>
 #include <QBrush>
 #include <QFont>
@@ -65,6 +66,15 @@ MainWindow::MainWindow(QWidget *parent)
     fftPlot->yAxis->setLabel("Amplitude (a.u.)");
     fftPlot->xAxis->setRange(0, 45);
     fftPlot->yAxis->setRange(0, 1.0);
+    
+    // Graphen vorab anlegen (für Performance)
+    QList<QColor> fftColors = { Qt::red, Qt::green, Qt::blue, Qt::magenta,
+                            Qt::cyan, Qt::darkYellow, Qt::darkRed, Qt::gray };
+    for (int i = 0; i < numChannels; ++i) {
+        fftPlot->addGraph();
+        fftPlot->graph(i)->setPen(QPen(fftColors.value(i % fftColors.size())));
+    }
+
     rightMasterLayout->addWidget(fftPlot, 2);
 
     // -------------------------------------------------------------------------
@@ -424,25 +434,26 @@ void MainWindow::handleNewEEGData(const QVector<double> &values)
     if (!filtered.isEmpty()) {
         bandPowerBuffer.append(filtered[0]);
         int maxSamples = int(currentSampleRate * windowSec);
-        if (bandPowerBuffer.size() > maxSamples) {
+        // Erst aufräumen, wenn deutlich zu groß (Amortisierung)
+        if (bandPowerBuffer.size() > maxSamples * 1.5) {
             bandPowerBuffer.remove(0, bandPowerBuffer.size() - maxSamples);
         }
     }
 
     // ---- FFT-Buffer & Head-Buffer für alle Kanäle ----
     int maxSamples = int(currentSampleRate * windowSec);
-    int headMaxSamples = int(currentSampleRate * 2.0);   // 2 Sekunden Fenster für Head-Plot
+    int headMaxSamples = int(currentSampleRate * 2.0);
 
     for (int ch = 0; ch < numChannels && ch < filtered.size(); ++ch) {
         // FFT
         fftBuffers[ch].append(filtered[ch]);
-        if (fftBuffers[ch].size() > maxSamples) {
+        if (fftBuffers[ch].size() > maxSamples * 1.5) {
             fftBuffers[ch].remove(0, fftBuffers[ch].size() - maxSamples);
         }
 
         // Head-Plot RMS
         headBuffers[ch].append(filtered[ch]);
-        if (headBuffers[ch].size() > headMaxSamples) {
+        if (headBuffers[ch].size() > headMaxSamples * 1.5) {
             headBuffers[ch].remove(0, headBuffers[ch].size() - headMaxSamples);
         }
     }
@@ -527,32 +538,14 @@ void MainWindow::updateElectrodePlacement()
     if (!electrodePlacementScene)
         return;
 
+    // Alles löschen außer dem Heatmap-Item, falls wir es wiederverwenden
+    // Alternativ: Einfach alles löschen und neu aufbauen, aber das Heatmap-Item separat halten
     electrodePlacementScene->clear();
+    heatmapPixmapItem = nullptr; 
 
     const double headR = 80.0;
     const QPointF c(0, 0);
     QPen headPen(Qt::black, 2);
-
-    // Kopf
-    electrodePlacementScene->addEllipse(
-        c.x() - headR,
-        c.y() - headR * 1.1,
-        2.0 * headR,
-        2.2 * headR,
-        headPen
-        );
-
-    // Ohren
-    electrodePlacementScene->addEllipse(c.x() - headR - 15, c.y() - 10, 20, 30, headPen);
-    electrodePlacementScene->addEllipse(c.x() + headR - 5,  c.y() - 10, 20, 30, headPen);
-
-    // Nase
-    QPainterPath nose;
-    nose.moveTo(c.x(),          c.y() - headR * 1.1 + 10);
-    nose.lineTo(c.x() - 10.0,   c.y() - headR * 1.1 + 25);
-    nose.lineTo(c.x() + 10.0,   c.y() - headR * 1.1 + 25);
-    nose.closeSubpath();
-    electrodePlacementScene->addPath(nose, headPen);
 
     // Elektroden-Positionen
     QStringList labels = { "Fp1","Fp2","F7","F8","Fz","Pz","T5","T6","Ref" };
@@ -568,87 +561,85 @@ void MainWindow::updateElectrodePlacement()
         { c.x(),                c.y() }                 // Ref
     };
 
-    // Aktivitäten aus Head-Buffern: RMS der letzten ~2s
+    // Aktivitäten extrahieren
     QVector<double> activities(numChannels, 0.0);
     double maxAct = 0.0;
-
     for (int ch = 0; ch < numChannels; ++ch) {
         const auto &buf = headBuffers[ch];
-        if (buf.isEmpty())
-            continue;
-
+        if (buf.isEmpty()) continue;
         double sumSq = 0.0;
-        for (double v : buf)
-            sumSq += v * v;
-
+        for (double v : buf) sumSq += v * v;
         double rms = std::sqrt(sumSq / double(buf.size()));
         activities[ch] = rms;
-        if (rms > maxAct)
-            maxAct = rms;
+        if (rms > maxAct) maxAct = rms;
     }
-
-    // Normierung auf 0..1
     if (maxAct > 0.0) {
-        for (double &a : activities)
-            a /= maxAct;
+        for (double &a : activities) a /= maxAct;
     }
+    while (activities.size() < pos.size()) activities.append(0.0);
 
-    // Falls activities noch zu kurz ist, mit Nullen auffüllen
-    while (activities.size() < pos.size())
-        activities.append(0.0);
+    // --- Heatmap als QImage rendern ---
+    int imgW = 300;
+    int imgH = 300;
+    QImage heatmap(imgW, imgH, QImage::Format_ARGB32);
+    heatmap.fill(Qt::transparent);
 
-    // Heatmap zeichnen (gröberes Raster für Performance)
-    const double step = 8.0;
-    for (double x = -150; x <= 150; x += step) {
-        for (double y = -150; y <= 150; y += step) {
+    // Bildmitte bei (150, 150) entspricht Szene (0, 0)
+    double offsetX = 150.0;
+    double offsetY = 150.0;
 
-            // nur innerhalb des Kopf-Ellipsoids zeichnen
-            double e = (x * x) / (headR * headR)
-                       + (y * y) / ((1.1 * headR) * (1.1 * headR));
-            if (e > 1.0)
-                continue;
+    for (int y = 0; y < imgH; ++y) {
+        double py = double(y) - offsetY;
+        for (int x = 0; x < imgW; ++x) {
+            double px = double(x) - offsetX;
 
-            // Inverse Distance Weighting der Kanalaktivitäten
+            // Innerhalb des Kopfes?
+            double e = (px * px) / (headR * headR) + (py * py) / ((1.1 * headR) * (1.1 * headR));
+            if (e > 1.0) continue;
+
             double sumW = 0.0;
             double sumA = 0.0;
-
             for (int i = 0; i < activities.size(); ++i) {
-                double dx = x - pos[i].x();
-                double dy = y - pos[i].y();
-                double d  = std::sqrt(dx * dx + dy * dy) + 0.01;
-                double w  = 1.0 / (d * d);
+                double dx = px - pos[i].x();
+                double dy = py - pos[i].y();
+                double d = std::sqrt(dx * dx + dy * dy) + 0.01;
+                double w = 1.0 / (d * d);
                 sumW += w;
                 sumA += w * activities[i];
             }
-
             double val = (sumW > 0.0 ? sumA / sumW : 0.0);
             val = qBound(0.0, val, 1.0);
 
             int r = int(255 * val);
             int g = int(255 * (1.0 - val));
-            QColor col(r, g, 0, 140);
-
-            QRectF rect(x, y, step, step);
-            electrodePlacementScene->addRect(rect, Qt::NoPen, QBrush(col));
+            heatmap.setPixelColor(x, y, QColor(r, g, 0, 140));
         }
     }
 
+    heatmapPixmapItem = electrodePlacementScene->addPixmap(QPixmap::fromImage(heatmap));
+    heatmapPixmapItem->setPos(-150, -150);
+    heatmapPixmapItem->setZValue(-1);
+
+    // Kopf zeichnen
+    electrodePlacementScene->addEllipse(c.x() - headR, c.y() - headR * 1.1, 2.0 * headR, 2.2 * headR, headPen);
+    electrodePlacementScene->addEllipse(c.x() - headR - 15, c.y() - 10, 20, 30, headPen);
+    electrodePlacementScene->addEllipse(c.x() + headR - 5,  c.y() - 10, 20, 30, headPen);
+    QPainterPath nose;
+    nose.moveTo(c.x(),          c.y() - headR * 1.1 + 10);
+    nose.lineTo(c.x() - 10.0,   c.y() - headR * 1.1 + 25);
+    nose.lineTo(c.x() + 10.0,   c.y() - headR * 1.1 + 25);
+    nose.closeSubpath();
+    electrodePlacementScene->addPath(nose, headPen);
+
     // Elektrodenkreise + Text
-    QPen   penThin(Qt::black, 1);
+    QPen penThin(Qt::black, 1);
     QBrush brushGray(Qt::gray);
     const double eSz = 12.0;
-
     for (int i = 0; i < pos.size(); ++i) {
         bool isRef = (i == pos.size() - 1);
-        QPen   p = isRef ? QPen(Qt::black, 2) : penThin;
+        QPen p = isRef ? QPen(Qt::black, 2) : penThin;
         QBrush b = isRef ? QBrush(Qt::white) : brushGray;
-
-        electrodePlacementScene->addEllipse(
-            pos[i].x() - eSz / 2.0,
-            pos[i].y() - eSz / 2.0,
-            eSz, eSz, p, b
-            );
-
+        electrodePlacementScene->addEllipse(pos[i].x() - eSz / 2.0, pos[i].y() - eSz / 2.0, eSz, eSz, p, b);
         auto *txt = electrodePlacementScene->addSimpleText(labels.value(i));
         txt->setFont(QFont("Arial", isRef ? 7 : 5));
         txt->setPos(pos[i].x() - 10, pos[i].y() - 18);
@@ -728,6 +719,40 @@ void MainWindow::updateFocusIndicator(double ratio)
 // Magnitude-Spektrum (für BandPower & FFT)
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// FFT-Algorithmus (Radix-2)
+// -----------------------------------------------------------------------------
+
+void MainWindow::fft(QVector<std::complex<double>>& a, bool invert)
+{
+    int n = a.size();
+    for (int i = 1, j = 0; i < n; i++) {
+        int bit = n >> 1;
+        for (; j & bit; bit >>= 1)
+            j ^= bit;
+        j ^= bit;
+        if (i < j)
+            std::swap(a[i], a[j]);
+    }
+    for (int len = 2; len <= n; len <<= 1) {
+        double ang = 2 * M_PI / len * (invert ? -1 : 1);
+        std::complex<double> wlen(std::cos(ang), std::sin(ang));
+        for (int i = 0; i < n; i += len) {
+            std::complex<double> w(1);
+            for (int j = 0; j < len / 2; j++) {
+                std::complex<double> u = a[i+j], v = a[i+j+len/2] * w;
+                a[i+j] = u + v;
+                a[i+j+len/2] = u - v;
+                w *= wlen;
+            }
+        }
+    }
+    if (invert) {
+        for (auto& x : a)
+            x /= n;
+    }
+}
+
 QVector<double> MainWindow::computeMagnitudeSpectrum(
     const QVector<double> &signal,
     double sampleRate)
@@ -736,38 +761,32 @@ QVector<double> MainWindow::computeMagnitudeSpectrum(
     if (Ntotal < 32 || sampleRate <= 0.0)
         return {};
 
-    // Nur die letzten maxN Samples verwenden (z.B. 512)
-    const int maxN = 512;
-    int N     = qMin(Ntotal, maxN);
-    int start = Ntotal - N;
+    // FFT braucht Power-of-2. Nächste Zweierpotenz suchen (oder fest auf z.B. 512)
+    const int N = 512; 
+    QVector<std::complex<double>> fa(N);
+    int start = std::max(0, Ntotal - N);
+    int actualN = std::min(Ntotal, N);
 
-    // Mittelwert über das Fenster entfernen
+    // DC-Entfernung & Fensterung
     double mean = 0.0;
-    for (int n = 0; n < N; ++n)
-        mean += signal[start + n];
-    mean /= double(N);
+    for (int n = 0; n < actualN; ++n) mean += signal[start + n];
+    mean /= double(actualN);
+
+    for (int i = 0; i < N; i++) {
+        if (i < actualN) {
+            double w = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (actualN - 1)));
+            fa[i] = std::complex<double>((signal[start + i] - mean) * w, 0);
+        } else {
+            fa[i] = std::complex<double>(0, 0);
+        }
+    }
+
+    fft(fa, false);
 
     int K = N / 2;
     QVector<double> magSpec(K);
-
     for (int k = 0; k < K; ++k) {
-        double real = 0.0;
-        double imag = 0.0;
-
-        double angBase = -2.0 * M_PI * k / double(N);
-
-        for (int n = 0; n < N; ++n) {
-            // Hahn-Fenster + DC-Entfernung
-            double centered = signal[start + n] - mean;
-            double w        = 0.5 * (1.0 - qCos(2.0 * M_PI * n / (N - 1)));
-            double sample   = centered * w;
-
-            double ang = angBase * n;
-            real += sample * qCos(ang);
-            imag += sample * qSin(ang);
-        }
-
-        magSpec[k] = qSqrt(real * real + imag * imag) / double(N);
+        magSpec[k] = std::abs(fa[k]) / double(N);
     }
 
     return magSpec;
@@ -851,8 +870,6 @@ void MainWindow::updateFftPlot()
     if (!fftPlot || currentSampleRate <= 0.0)
         return;
 
-    fftPlot->clearGraphs();
-
     if (fftBuffers.isEmpty())
         return;
 
@@ -891,9 +908,9 @@ void MainWindow::updateFftPlot()
             if (a[i] > globalMax) globalMax = a[i];
         }
 
-        fftPlot->addGraph();
-        fftPlot->graph(ch)->setPen(QPen(colors.value(ch)));
-        fftPlot->graph(ch)->setData(f, a);
+        if (fftPlot->graphCount() > ch) {
+            fftPlot->graph(ch)->setData(f, a);
+        }
     }
 
     if (globalMax <= 0.0) globalMax = 1.0;

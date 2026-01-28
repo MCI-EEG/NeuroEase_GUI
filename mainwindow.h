@@ -8,6 +8,7 @@
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QGraphicsScene>
+#include <complex>
 
 class QComboBox;
 class QSpinBox;
@@ -71,6 +72,7 @@ private:
     // Heatmap / Topographie
     ZoomableGraphicsView      *electrodePlacementView  = nullptr;
     QGraphicsScene            *electrodePlacementScene = nullptr;
+    QGraphicsPixmapItem       *heatmapPixmapItem       = nullptr;
 
     // Theta/Beta-Balkendiagramm
     QCustomPlot               *thetaBetaBarPlot = nullptr;
@@ -114,6 +116,9 @@ private:
 
     // DSP (Highpass + Notch + Bandlimit)
     DataProcessingQt          *dataProcessor    = nullptr;
+
+    // FFT Optimization
+    void fft(QVector<std::complex<double>>& a, bool invert);
 };
 
 #endif // MAINWINDOW_H
