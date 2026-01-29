@@ -7,6 +7,7 @@
 #include "RealDataSource.h"
 #include "FileDataSource.h"
 #include "DataProcessingQt.h"
+#include "BleDataSource.h"
 
 #include <QWidget>
 #include <QComboBox>
@@ -112,6 +113,7 @@ MainWindow::MainWindow(QWidget *parent)
     modeCombo = new QComboBox(this);
     modeCombo->addItem("Simulated");
     modeCombo->addItem("Real (UDP)");
+    modeCombo->addItem("Bluetooth (BLE)");
     modeCombo->addItem("File (OpenBCI)");
 
     udpPortSpinBox = new QSpinBox(this);
@@ -315,10 +317,22 @@ MainWindow::MainWindow(QWidget *parent)
                                 QMessageBox::warning(this,
                                                      tr("UDP error"),
                                                      msg + "\nMeasurement stopped.");
-                                if (dataSource)
-                                    dataSource->stop();
                             });
                 } else if (index == 2) {
+                    // BLE
+                    auto *ble = new BleDataSource(this);
+                    connectDataSource(ble);
+                    udpPortSpinBox->setEnabled(false);
+                    connect(ble, &BleDataSource::statusMessage, this, [this](const QString &msg){
+                        this->statusBar()->showMessage(msg);
+                        qDebug() << "[BLE Status]" << msg;
+                    });
+
+                    connect(ble, &BleDataSource::criticalError, this, [this](const QString &title, const QString &msg){
+                        QMessageBox::critical(this, title, msg);
+                        this->modeCombo->setCurrentIndex(0); // Switch back to simulated
+                    });
+                } else if (index == 3) {
                     QString fileName = QFileDialog::getOpenFileName(
                         this,
                         tr("Open OpenBCI file"),
@@ -527,6 +541,7 @@ void MainWindow::resetPlots()
     updateBandPowerPlot(BandPower{0,0,0,0,0});
     updateFftPlot();
     updateFocusIndicator(0.0);
+    if (statusBar()) statusBar()->clearMessage();
 }
 
 // -----------------------------------------------------------------------------
