@@ -90,7 +90,8 @@ private:
 
   // Theta/Beta-Balkendiagramm
   QCustomPlot *thetaBetaBarPlot = nullptr;
-  QCPBars *thetaBetaBars = nullptr;
+  QCPBars *thetaBar = nullptr;
+  QCPBars *betaBar = nullptr;
 
   // Band-Power (Delta/Theta/Alpha/Beta/Gamma)
   QCustomPlot *bandPowerPlot = nullptr;

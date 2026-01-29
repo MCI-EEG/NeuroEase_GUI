@@ -275,8 +275,15 @@ MainWindow::MainWindow(QWidget *parent)
   thetaBetaBarPlot->xAxis->setSubTicks(false);
   thetaBetaBarPlot->xAxis->setTickLength(0, 4);
 
-  thetaBetaBars = new QCPBars(thetaBetaBarPlot->xAxis, thetaBetaBarPlot->yAxis);
-  thetaBetaBars->setWidth(0.4);
+  thetaBar = new QCPBars(thetaBetaBarPlot->xAxis, thetaBetaBarPlot->yAxis);
+  thetaBar->setWidth(0.5);
+  thetaBar->setBrush(QBrush(QColor(162, 133, 177))); // Theta Purple
+  thetaBar->setPen(Qt::NoPen);
+
+  betaBar = new QCPBars(thetaBetaBarPlot->xAxis, thetaBetaBarPlot->yAxis);
+  betaBar->setWidth(0.5);
+  betaBar->setBrush(QBrush(QColor(223, 199, 118))); // Beta Yellow
+  betaBar->setPen(Qt::NoPen);
 
   rightColumnLayout->addWidget(thetaBetaBarPlot);
 
@@ -650,6 +657,13 @@ void MainWindow::resetPlots() {
     plot->replot();
   }
 
+  if (thetaBar)
+    thetaBar->data()->clear();
+  if (betaBar)
+    betaBar->data()->clear();
+  if (thetaBetaBarPlot)
+    thetaBetaBarPlot->replot();
+
   placementConfirmed = false;
   bandPowerBuffer.clear();
   for (auto &buf : fftBuffers)
@@ -709,10 +723,11 @@ void MainWindow::updateThetaBetaBars() {
   double t = 0.6;
   double b = 0.8;
 
-  QVector<double> ticks{1.0, 2.0};
-  QVector<double> vals{t, b};
+  if (thetaBar)
+    thetaBar->setData(QVector<double>{1.0}, QVector<double>{t});
+  if (betaBar)
+    betaBar->setData(QVector<double>{2.0}, QVector<double>{b});
 
-  thetaBetaBars->setData(ticks, vals);
   thetaBetaBarPlot->replot(QCustomPlot::rpQueuedReplot);
 
   double ratio = (b > 1e-6) ? t / b : 0.0;
@@ -728,9 +743,10 @@ void MainWindow::updateThetaBetaBarsFromBandPower(const BandPower &bp) {
   double beta = bp.beta;
 
   if (theta <= 0.0 && beta <= 0.0) {
-    QVector<double> ticks{1.0, 2.0};
-    QVector<double> vals{0.0, 0.0};
-    thetaBetaBars->setData(ticks, vals);
+    if (thetaBar)
+      thetaBar->setData(QVector<double>{1.0}, QVector<double>{0.0});
+    if (betaBar)
+      betaBar->setData(QVector<double>{2.0}, QVector<double>{0.0});
     thetaBetaBarPlot->replot(QCustomPlot::rpQueuedReplot);
     updateFocusIndicator(0.0);
     return;
@@ -741,10 +757,11 @@ void MainWindow::updateThetaBetaBarsFromBandPower(const BandPower &bp) {
   double tNorm = theta / sum;
   double bNorm = beta / sum;
 
-  QVector<double> ticks{1.0, 2.0};
-  QVector<double> vals{tNorm, bNorm};
+  if (thetaBar)
+    thetaBar->setData(QVector<double>{1.0}, QVector<double>{tNorm});
+  if (betaBar)
+    betaBar->setData(QVector<double>{2.0}, QVector<double>{bNorm});
 
-  thetaBetaBars->setData(ticks, vals);
   thetaBetaBarPlot->yAxis->setRange(0, 1.2);
   thetaBetaBarPlot->replot(QCustomPlot::rpQueuedReplot);
 
