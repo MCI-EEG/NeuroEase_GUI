@@ -43,6 +43,14 @@ public:
 private slots:
   void handleNewEEGData(const QVector<double> &values);
   void resetPlots();
+  void displayImpedance(const QStringList &values);
+
+  // Device Control Slots
+  void setSps(const QString &text);
+  void setGain(const QString &text);
+  void toggleBias(bool checked);
+  void toggleSrb1(bool checked);
+  void toggleTestSignal(bool checked);
 
 private:
   struct BandPower {
@@ -76,6 +84,7 @@ private:
   QPushButton *startButton = nullptr;
   QPushButton *stopButton = nullptr;
   QPushButton *resetButton = nullptr;
+  QPushButton *impedanceButton = nullptr;
 
   // Layouts
   QHBoxLayout *mainHorizontalLayout = nullptr;
@@ -112,6 +121,13 @@ private:
   QComboBox *modeCombo = nullptr;
   QSpinBox *udpPortSpinBox = nullptr;
   QComboBox *fftRangeCombo = nullptr;
+
+  // Device Controls
+  QComboBox *spsCombo = nullptr;
+  QComboBox *gainCombo = nullptr;
+  QPushButton *biasButton = nullptr;
+  QPushButton *srb1Button = nullptr;
+  QPushButton *testSignalButton = nullptr;
 
   // Filter-Checkboxen
   QCheckBox *hpCheckBox = nullptr;

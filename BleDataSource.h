@@ -11,7 +11,6 @@
 #include <QQueue>
 #include <QTimer>
 
-
 class BleDataSource : public AbstractDataSource {
   Q_OBJECT
 public:
@@ -20,9 +19,11 @@ public:
 
   void start() override;
   void stop() override;
-  double sampleRate() const override {
-    return 250.0;
-  } // Assuming 250Hz like Real/Sim
+  double sampleRate() const override { return static_cast<double>(m_sps); }
+  void setGain(int gain) override { m_gain = gain; }
+  void setSampleRate(int sps) override { m_sps = sps; }
+  void sendCommand(const QString &cmd) override;
+  bool isConnected() const { return m_isConnected; }
 
 signals:
   void statusMessage(const QString &msg);
@@ -58,6 +59,9 @@ private:
   // 44-byte logical packet into MTU-sized physical packets.
   QByteArray m_incomingBuffer;
 
+  int m_gain = 24;
+  int m_sps = 250;
+
   QBluetoothDeviceDiscoveryAgent *m_discoveryAgent = nullptr;
   QLowEnergyController *m_controller = nullptr;
   QLowEnergyService *m_service = nullptr;
@@ -77,8 +81,7 @@ private:
   // Drop tracking
   qint64 m_lastDeviceTimestamp = 0;
   qint64 m_dropCount = 0;
-
-  void sendCommand(const QString &cmd);
+  bool m_isConnected = false;
 };
 
 #endif // BLEDATASOURCE_H

@@ -156,13 +156,15 @@ MainWindow::MainWindow(QWidget *parent)
   sourceLayout->addSpacing(10);
   sourceLayout->addWidget(recordCheckBox);
 
-  startButton = new QPushButton("Start", this);
-  stopButton = new QPushButton("Stop", this);
+  startButton = new QPushButton("Start / Connect", this);
+  stopButton = new QPushButton("Stop / Disconnect", this);
   resetButton = new QPushButton("Reset", this);
+  impedanceButton = new QPushButton("Check Impedance", this);
 
   auto *btnLayout = new QHBoxLayout();
   btnLayout->addWidget(startButton);
   btnLayout->addWidget(stopButton);
+  btnLayout->addWidget(impedanceButton);
 
   leftColumnLayout->addLayout(sourceLayout);
   leftColumnLayout->addLayout(btnLayout);
@@ -187,6 +189,48 @@ MainWindow::MainWindow(QWidget *parent)
   filterLayout->addWidget(bpCheckBox);
 
   leftColumnLayout->addWidget(filterGroup);
+
+  // -------------------------------------------------------------------------
+  // Device Settings (Gain, SPS, Bias, Test)
+  // -------------------------------------------------------------------------
+  QGroupBox *deviceGroup = new QGroupBox(tr("Device Settings"), this);
+  QGridLayout *devLayout = new QGridLayout(deviceGroup);
+
+  devLayout->addWidget(new QLabel("SPS:", this), 0, 0);
+  spsCombo = new QComboBox(this);
+  spsCombo->addItems({"250", "500", "1000", "2000"});
+  spsCombo->setCurrentText("250");
+  devLayout->addWidget(spsCombo, 0, 1);
+
+  devLayout->addWidget(new QLabel("Gain:", this), 1, 0);
+  gainCombo = new QComboBox(this);
+  gainCombo->addItems({"1", "2", "4", "6", "8", "12", "24"});
+  gainCombo->setCurrentText("24");
+  devLayout->addWidget(gainCombo, 1, 1);
+
+  biasButton = new QPushButton("Bias Drive", this);
+  biasButton->setCheckable(true);
+  devLayout->addWidget(biasButton, 2, 0);
+
+  srb1Button = new QPushButton("SRB1 (Ref)", this);
+  srb1Button->setCheckable(true);
+  srb1Button->setChecked(true); // Default ON
+  devLayout->addWidget(srb1Button, 2, 1);
+
+  testSignalButton = new QPushButton("Test Signal", this);
+  testSignalButton->setCheckable(true);
+  devLayout->addWidget(testSignalButton, 3, 0, 1, 2);
+
+  leftColumnLayout->addWidget(deviceGroup);
+
+  // Connect Controls
+  connect(spsCombo, &QComboBox::currentTextChanged, this, &MainWindow::setSps);
+  connect(gainCombo, &QComboBox::currentTextChanged, this,
+          &MainWindow::setGain);
+  connect(biasButton, &QPushButton::toggled, this, &MainWindow::toggleBias);
+  connect(srb1Button, &QPushButton::toggled, this, &MainWindow::toggleSrb1);
+  connect(testSignalButton, &QPushButton::toggled, this,
+          &MainWindow::toggleTestSignal);
 
   // -------------------------------------------------------------------------
   // Mitte: BandPower (oben) + Head Plot (darunter)
@@ -333,6 +377,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(
         src, &AbstractDataSource::statusMessage, this,
         [this](const QString &msg) { this->statusBar()->showMessage(msg); });
+    connect(src, &AbstractDataSource::impedanceReceived, this,
+            &MainWindow::displayImpedance);
   };
 
   // Default: Simulation
@@ -379,8 +425,9 @@ MainWindow::MainWindow(QWidget *parent)
           udpPortSpinBox->setEnabled(false);
           connect(ble, &BleDataSource::statusMessage, this,
                   [this](const QString &msg) {
-                    this->statusBar()->showMessage(msg);
-                    qDebug() << "[BLE Status]" << msg;
+                    if (msg == tr("Successfully connected.")) {
+                      this->statusBar()->showMessage("Connected.");
+                    }
                   });
 
           connect(ble, &BleDataSource::criticalError, this,
@@ -448,6 +495,16 @@ MainWindow::MainWindow(QWidget *parent)
   });
 
   connect(resetButton, &QPushButton::clicked, this, &MainWindow::resetPlots);
+
+  connect(impedanceButton, &QPushButton::clicked, this, [this]() {
+    if (dataSource && dataSource->isConnected()) {
+      dataSource->sendCommand("IMPEDANCE");
+      statusBar()->showMessage("Measuring impedance...");
+    } else {
+      QMessageBox::information(this, tr("Impedance Measurement"),
+                               tr("No device connected."));
+    }
+  });
 
   updateElectrodePlacement();
   updateThetaBetaBars();
@@ -999,4 +1056,135 @@ void MainWindow::updateFftPlot() {
   fftPlot->yAxis->setRange(0, globalMax * 1.2);
 
   fftPlot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void MainWindow::displayImpedance(const QStringList &values) {
+  QString html = "<table style='font-size: 14px; border-collapse: collapse;'>";
+  html +=
+      "<tr><th style='padding: 5px; border-bottom: 1px solid "
+      "#ccc;'>Channel</th>"
+      "<th style='padding: 5px; border-bottom: 1px solid #ccc;'>Impedance</th>"
+      "<th style='padding: 5px; border-bottom: 1px solid "
+      "#ccc;'>Quality</th></tr>";
+
+  for (int i = 0; i < values.size() && i < numChannels; ++i) {
+    QString val = values[i].trimmed();
+    QString color = "#888888";
+    QString quality = "Unknown";
+    QString disp = val;
+
+    if (val == "OFF" || val == "ERROR") {
+      color = "#FF5555";
+      quality = "Disconnected";
+    } else {
+      bool ok;
+      int z = val.toInt(&ok);
+      if (ok) {
+        if (z < 10) {
+          color = "#50FA7B"; // Green
+          quality = "Excellent";
+        } else if (z < 50) {
+          color = "#F1FA8C"; // Yellow
+          quality = "Acceptable";
+        } else {
+          color = "#FF5555"; // Red
+          quality = "Poor";
+        }
+        disp = QString("%1 kOhm").arg(z);
+      }
+    }
+
+    html +=
+        QString(
+            "<tr><td style='padding: 5px;'>CH%1</td>"
+            "<td style='padding: 5px; color: %2; font-weight: bold;'>%3</td>"
+            "<td style='padding: 5px; color: %2;'>%4</td></tr>")
+            .arg(i + 1)
+            .arg(color)
+            .arg(disp)
+            .arg(quality);
+  }
+  html += "</table>";
+
+  QMessageBox msgBox(this);
+  msgBox.setWindowTitle("Electrode Impedance");
+  msgBox.setIcon(QMessageBox::Information);
+  msgBox.setText(html);
+  msgBox.setTextFormat(Qt::RichText);
+  msgBox.exec();
+
+  statusBar()->showMessage("Impedance measurement complete");
+}
+
+// -----------------------------------------------------------------------------
+// Device Control Slots
+// -----------------------------------------------------------------------------
+
+void MainWindow::setSps(const QString &text) {
+  int sps = text.toInt();
+  if (dataSource) {
+    dataSource->setSampleRate(sps);
+    dataSource->sendCommand(QString("SPS %1").arg(sps));
+  }
+  // Update local rate tracking
+  currentSampleRate = static_cast<double>(sps);
+
+  // DSP reset might be good if SPS changes
+  if (dataProcessor) {
+    bool hp = hpCheckBox ? hpCheckBox->isChecked() : true;
+    bool notch = notchCheckBox ? notchCheckBox->isChecked() : true;
+    bool bp = bpCheckBox ? bpCheckBox->isChecked() : true;
+    delete dataProcessor;
+    dataProcessor =
+        new DataProcessingQt(numChannels, currentSampleRate, hp, notch, bp);
+  }
+}
+
+void MainWindow::setGain(const QString &text) {
+  int gain = text.toInt();
+  if (dataSource) {
+    dataSource->setGain(gain);
+    dataSource->sendCommand(QString("GAIN ALL %1").arg(text));
+
+    // Re-apply test signal if needed (based on python script logic)
+    if (testSignalButton->isChecked()) {
+      QTimer::singleShot(100, [this]() {
+        if (dataSource)
+          dataSource->sendCommand("TEST 1");
+      });
+    }
+  }
+}
+
+void MainWindow::toggleBias(bool checked) {
+  if (dataSource) {
+    dataSource->sendCommand(checked ? "BIAS 1" : "BIAS 0");
+  }
+}
+
+void MainWindow::toggleSrb1(bool checked) {
+  if (dataSource) {
+    dataSource->sendCommand(checked ? "SRB1 1" : "SRB1 0");
+  }
+}
+
+void MainWindow::toggleTestSignal(bool checked) {
+  if (dataSource) {
+    if (checked) {
+      dataSource->sendCommand("TEST 1");
+      // Python script workaround: force gain back after a moment
+      QTimer::singleShot(50, [this]() {
+        if (dataSource && gainCombo)
+          dataSource->sendCommand(
+              QString("GAIN ALL %1").arg(gainCombo->currentText()));
+      });
+    } else {
+      dataSource->sendCommand("TEST 0");
+      QTimer::singleShot(50, [this]() {
+        if (dataSource && gainCombo)
+          dataSource->sendCommand(
+              QString("GAIN ALL %1").arg(gainCombo->currentText()));
+      });
+    }
+  }
 }

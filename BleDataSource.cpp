@@ -37,14 +37,18 @@ void BleDataSource::start() {
 }
 
 void BleDataSource::stop() {
-  if (m_discoveryAgent->isActive())
-    m_discoveryAgent->stop();
-
   if (m_controller) {
     m_controller->disconnectFromDevice();
     delete m_controller;
     m_controller = nullptr;
   }
+  if (m_service) {
+    delete m_service;
+    m_service = nullptr;
+  }
+  m_incomingBuffer.clear();
+  m_targetDeviceFound = false;
+  m_isConnected = false;
 }
 
 void BleDataSource::startScan() {
@@ -126,6 +130,7 @@ void BleDataSource::deviceConnected() {
 
 void BleDataSource::deviceDisconnected() {
   emit statusMessage("Disconnected.");
+  m_isConnected = false;
 }
 
 void BleDataSource::controllerError(QLowEnergyController::Error error) {
@@ -166,6 +171,7 @@ void BleDataSource::serviceStateChanged(QLowEnergyService::ServiceState s) {
     if (notification.isValid()) {
       m_service->writeDescriptor(notification,
                                  QByteArray::fromHex("0100")); // Enable Notify
+      m_isConnected = true;
       emit statusMessage(tr("Successfully connected."));
     }
   }
@@ -174,6 +180,15 @@ void BleDataSource::serviceStateChanged(QLowEnergyService::ServiceState s) {
 void BleDataSource::serviceCharacteristicChanged(
     const QLowEnergyCharacteristic &c, const QByteArray &value) {
   if (c.uuid() == QBluetoothUuid(CHAR_TX_UUID)) {
+    // Check for text response (impedance result)
+    if (value.startsWith("IMP:")) {
+      QString text = QString::fromUtf8(value).trimmed();
+      QString valuesStr = text.mid(4); // Remove "IMP:"
+      QStringList values = valuesStr.split(',');
+      emit impedanceReceived(values);
+      return;
+    }
+
     m_incomingBuffer.append(value);
 
     // Process all complete packets in buffer
@@ -201,6 +216,17 @@ void BleDataSource::serviceCharacteristicChanged(
   }
 }
 
+void BleDataSource::sendCommand(const QString &cmd) {
+  if (!m_service)
+    return;
+
+  QLowEnergyCharacteristic rxChar =
+      m_service->characteristic(QBluetoothUuid(CHAR_RX_UUID));
+  if (rxChar.isValid()) {
+    m_service->writeCharacteristic(rxChar, (cmd + "\n").toUtf8());
+  }
+}
+
 void BleDataSource::parsePacket(const QByteArray &data) {
   if (data.size() < PACKET_SIZE)
     return;
@@ -221,7 +247,8 @@ void BleDataSource::parsePacket(const QByteArray &data) {
     qint64 diff = packetTs - m_lastDeviceTimestamp;
     // Expected at 250Hz: 4000 µs
     // Tolerance: 6000 µs
-    const qint64 expected = 4000;
+    // Expected interval based on current SPS
+    const qint64 expected = 1000000 / m_sps;
     if (diff > expected * 1.5) {
       int dropped = qRound(double(diff) / double(expected)) - 1;
       if (dropped > 0) {
@@ -262,8 +289,11 @@ void BleDataSource::parsePacket(const QByteArray &data) {
     // 1 LSB = (2 * Vref / Gain) / 2^24
     // To get µV: multiply by 1,000,000
     const double vref = 4.5;
-    const double gain = 24.0;
-    const double lsbSize = (2.0 * vref / gain) / 16777216.0;
+    const double gain = static_cast<double>(m_gain);
+    // Avoid division by zero
+    double effectiveGain = (gain < 1.0) ? 24.0 : gain;
+
+    const double lsbSize = (2.0 * vref / effectiveGain) / 16777216.0;
     const double scaleToMicrovolts = lsbSize * 1000000.0;
 
     values.append(static_cast<double>(rawVal) * scaleToMicrovolts);
