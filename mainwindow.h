@@ -94,7 +94,7 @@ private:
 
   // Band-Power (Delta/Theta/Alpha/Beta/Gamma)
   QCustomPlot *bandPowerPlot = nullptr;
-  QCPBars *bandPowerBars = nullptr;
+  QVector<QCPBars *> bandPowerBarsList;
   QVector<double> bandPowerTicks;
 
   // FFT-Plot (unten, über Mitte+Rechts)

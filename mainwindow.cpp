@@ -10,7 +10,6 @@
 #include "qcustomplot.h"
 #include "zoomablegraphicsview.h"
 
-
 #include <QBrush>
 #include <QCheckBox>
 #include <QComboBox>
@@ -206,24 +205,41 @@ MainWindow::MainWindow(QWidget *parent)
 
   {
     QSharedPointer<QCPAxisTickerText> bpTicker(new QCPAxisTickerText);
-    bpTicker->addTick(1, "DELTA");
-    bpTicker->addTick(2, "THETA");
-    bpTicker->addTick(3, "ALPHA");
-    bpTicker->addTick(4, "BETA");
-    bpTicker->addTick(5, "GAMMA");
+    bpTicker->addTick(1, "DELTA\n0.5-4Hz");
+    bpTicker->addTick(2, "THETA\n4-8Hz");
+    bpTicker->addTick(3, "ALPHA\n8-13Hz");
+    bpTicker->addTick(4, "BETA\n13-32Hz");
+    bpTicker->addTick(5, "GAMMA\n32-100Hz");
     bandPowerPlot->xAxis->setTicker(bpTicker);
     bandPowerPlot->xAxis->setSubTicks(false);
     bandPowerPlot->xAxis->setTickLength(0, 4);
+    bandPowerPlot->xAxis->setLabelFont(QFont("sans serif", 10, QFont::Bold));
+    bandPowerPlot->xAxis->setTickLabelFont(QFont("sans serif", 8));
   }
 
-  bandPowerBars = new QCPBars(bandPowerPlot->xAxis, bandPowerPlot->yAxis);
-  bandPowerBars->setWidth(0.6);
-  {
-    QVector<double> initVals{0, 0, 0, 0, 0};
-    bandPowerBars->setData(bandPowerTicks, initVals);
-    bandPowerPlot->xAxis->setRange(
-        0.5, 5.5); // Ensure all bars (1-5) are fully visible
+  // OpenBCI Colors (approximate from image)
+  QList<QColor> bpColors = {
+      QColor(89, 112, 163),  // Delta: Bluish
+      QColor(162, 133, 177), // Theta: Purple
+      QColor(139, 161, 146), // Alpha: Greenish-grey
+      QColor(223, 199, 118), // Beta: Yellowish
+      QColor(216, 143, 131)  // Gamma: Reddish
+  };
+
+  bandPowerBarsList.clear();
+  for (int i = 0; i < 5; ++i) {
+    QCPBars *bars = new QCPBars(bandPowerPlot->xAxis, bandPowerPlot->yAxis);
+    bars->setWidth(0.7);
+    bars->setPen(Qt::NoPen);
+    bars->setBrush(QBrush(bpColors.value(i)));
+
+    QVector<double> tick{bandPowerTicks[i]};
+    QVector<double> val{0.0};
+    bars->setData(tick, val);
+
+    bandPowerBarsList.append(bars);
   }
+  bandPowerPlot->xAxis->setRange(0.5, 5.5);
 
   centerColumnLayout->addWidget(bandPowerPlot);
 
@@ -876,7 +892,7 @@ MainWindow::computeBandPower(const QVector<double> &signal, double sampleRate) {
 // -----------------------------------------------------------------------------
 
 void MainWindow::updateBandPowerPlot(const BandPower &bp) {
-  if (!bandPowerPlot || !bandPowerBars)
+  if (!bandPowerPlot || bandPowerBarsList.size() < 5)
     return;
 
   QVector<double> vals;
@@ -891,7 +907,12 @@ void MainWindow::updateBandPowerPlot(const BandPower &bp) {
       v /= total; // Summe = 1 -> relative power
   }
 
-  bandPowerBars->setData(bandPowerTicks, vals);
+  for (int i = 0; i < 5; ++i) {
+    QVector<double> tick{bandPowerTicks[i]};
+    QVector<double> val{vals[i]};
+    bandPowerBarsList[i]->setData(tick, val);
+  }
+
   bandPowerPlot->yAxis->setRange(0, 1.2);
   bandPowerPlot->replot(QCustomPlot::rpQueuedReplot);
 }
