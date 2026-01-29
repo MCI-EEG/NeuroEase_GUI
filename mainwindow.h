@@ -45,6 +45,13 @@ private slots:
   void resetPlots();
   void displayImpedance(const QStringList &values);
 
+  // Device Control Slots
+  void setSps(const QString &text);
+  void setGain(const QString &text);
+  void toggleBias(bool checked);
+  void toggleSrb1(bool checked);
+  void toggleTestSignal(bool checked);
+
 private:
   struct BandPower {
     double delta;
@@ -114,6 +121,13 @@ private:
   QComboBox *modeCombo = nullptr;
   QSpinBox *udpPortSpinBox = nullptr;
   QComboBox *fftRangeCombo = nullptr;
+
+  // Device Controls
+  QComboBox *spsCombo = nullptr;
+  QComboBox *gainCombo = nullptr;
+  QPushButton *biasButton = nullptr;
+  QPushButton *srb1Button = nullptr;
+  QPushButton *testSignalButton = nullptr;
 
   // Filter-Checkboxen
   QCheckBox *hpCheckBox = nullptr;

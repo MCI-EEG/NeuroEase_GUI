@@ -37,14 +37,17 @@ void BleDataSource::start() {
 }
 
 void BleDataSource::stop() {
-  if (m_discoveryAgent->isActive())
-    m_discoveryAgent->stop();
-
   if (m_controller) {
     m_controller->disconnectFromDevice();
     delete m_controller;
     m_controller = nullptr;
   }
+  if (m_service) {
+    delete m_service;
+    m_service = nullptr;
+  }
+  m_incomingBuffer.clear();
+  m_targetDeviceFound = false;
   m_isConnected = false;
 }
 
@@ -244,7 +247,8 @@ void BleDataSource::parsePacket(const QByteArray &data) {
     qint64 diff = packetTs - m_lastDeviceTimestamp;
     // Expected at 250Hz: 4000 µs
     // Tolerance: 6000 µs
-    const qint64 expected = 4000;
+    // Expected interval based on current SPS
+    const qint64 expected = 1000000 / m_sps;
     if (diff > expected * 1.5) {
       int dropped = qRound(double(diff) / double(expected)) - 1;
       if (dropped > 0) {
@@ -285,8 +289,11 @@ void BleDataSource::parsePacket(const QByteArray &data) {
     // 1 LSB = (2 * Vref / Gain) / 2^24
     // To get µV: multiply by 1,000,000
     const double vref = 4.5;
-    const double gain = 24.0;
-    const double lsbSize = (2.0 * vref / gain) / 16777216.0;
+    const double gain = static_cast<double>(m_gain);
+    // Avoid division by zero
+    double effectiveGain = (gain < 1.0) ? 24.0 : gain;
+
+    const double lsbSize = (2.0 * vref / effectiveGain) / 16777216.0;
     const double scaleToMicrovolts = lsbSize * 1000000.0;
 
     values.append(static_cast<double>(rawVal) * scaleToMicrovolts);

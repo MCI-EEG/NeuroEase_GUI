@@ -19,9 +19,9 @@ public:
 
   void start() override;
   void stop() override;
-  double sampleRate() const override {
-    return 250.0;
-  } // Assuming 250Hz like Real/Sim
+  double sampleRate() const override { return static_cast<double>(m_sps); }
+  void setGain(int gain) override { m_gain = gain; }
+  void setSampleRate(int sps) override { m_sps = sps; }
   void sendCommand(const QString &cmd) override;
   bool isConnected() const { return m_isConnected; }
 
@@ -58,6 +58,9 @@ private:
   // which sends chunks. We need to reassemble if the firmware splits the
   // 44-byte logical packet into MTU-sized physical packets.
   QByteArray m_incomingBuffer;
+
+  int m_gain = 24;
+  int m_sps = 250;
 
   QBluetoothDeviceDiscoveryAgent *m_discoveryAgent = nullptr;
   QLowEnergyController *m_controller = nullptr;

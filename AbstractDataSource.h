@@ -13,6 +13,8 @@ public:
   virtual void start() = 0;
   virtual void stop() = 0;
   virtual double sampleRate() const = 0;
+  virtual void setGain(int gain) { Q_UNUSED(gain); }
+  virtual void setSampleRate(int sps) { Q_UNUSED(sps); }
   virtual void sendCommand(const QString &cmd) { Q_UNUSED(cmd); }
   virtual bool isConnected() const { return false; }
 
