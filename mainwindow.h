@@ -43,6 +43,7 @@ public:
 private slots:
   void handleNewEEGData(const QVector<double> &values);
   void resetPlots();
+  void displayImpedance(const QStringList &values);
 
 private:
   struct BandPower {
@@ -76,6 +77,7 @@ private:
   QPushButton *startButton = nullptr;
   QPushButton *stopButton = nullptr;
   QPushButton *resetButton = nullptr;
+  QPushButton *impedanceButton = nullptr;
 
   // Layouts
   QHBoxLayout *mainHorizontalLayout = nullptr;

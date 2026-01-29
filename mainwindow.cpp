@@ -159,10 +159,12 @@ MainWindow::MainWindow(QWidget *parent)
   startButton = new QPushButton("Start", this);
   stopButton = new QPushButton("Stop", this);
   resetButton = new QPushButton("Reset", this);
+  impedanceButton = new QPushButton("Check Impedance", this);
 
   auto *btnLayout = new QHBoxLayout();
   btnLayout->addWidget(startButton);
   btnLayout->addWidget(stopButton);
+  btnLayout->addWidget(impedanceButton);
 
   leftColumnLayout->addLayout(sourceLayout);
   leftColumnLayout->addLayout(btnLayout);
@@ -333,6 +335,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(
         src, &AbstractDataSource::statusMessage, this,
         [this](const QString &msg) { this->statusBar()->showMessage(msg); });
+    connect(src, &AbstractDataSource::impedanceReceived, this,
+            &MainWindow::displayImpedance);
   };
 
   // Default: Simulation
@@ -379,8 +383,9 @@ MainWindow::MainWindow(QWidget *parent)
           udpPortSpinBox->setEnabled(false);
           connect(ble, &BleDataSource::statusMessage, this,
                   [this](const QString &msg) {
-                    this->statusBar()->showMessage(msg);
-                    qDebug() << "[BLE Status]" << msg;
+                    if (msg == tr("Successfully connected.")) {
+                      this->statusBar()->showMessage("Connected.");
+                    }
                   });
 
           connect(ble, &BleDataSource::criticalError, this,
@@ -448,6 +453,16 @@ MainWindow::MainWindow(QWidget *parent)
   });
 
   connect(resetButton, &QPushButton::clicked, this, &MainWindow::resetPlots);
+
+  connect(impedanceButton, &QPushButton::clicked, this, [this]() {
+    if (dataSource && dataSource->isConnected()) {
+      dataSource->sendCommand("IMPEDANCE");
+      statusBar()->showMessage("Measuring impedance...");
+    } else {
+      QMessageBox::information(this, tr("Impedance Measurement"),
+                               tr("No device connected."));
+    }
+  });
 
   updateElectrodePlacement();
   updateThetaBetaBars();
@@ -999,4 +1014,62 @@ void MainWindow::updateFftPlot() {
   fftPlot->yAxis->setRange(0, globalMax * 1.2);
 
   fftPlot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void MainWindow::displayImpedance(const QStringList &values) {
+  QString html = "<table style='font-size: 14px; border-collapse: collapse;'>";
+  html +=
+      "<tr><th style='padding: 5px; border-bottom: 1px solid "
+      "#ccc;'>Channel</th>"
+      "<th style='padding: 5px; border-bottom: 1px solid #ccc;'>Impedance</th>"
+      "<th style='padding: 5px; border-bottom: 1px solid "
+      "#ccc;'>Quality</th></tr>";
+
+  for (int i = 0; i < values.size() && i < numChannels; ++i) {
+    QString val = values[i].trimmed();
+    QString color = "#888888";
+    QString quality = "Unknown";
+    QString disp = val;
+
+    if (val == "OFF" || val == "ERROR") {
+      color = "#FF5555";
+      quality = "Disconnected";
+    } else {
+      bool ok;
+      int z = val.toInt(&ok);
+      if (ok) {
+        if (z < 10) {
+          color = "#50FA7B"; // Green
+          quality = "Excellent";
+        } else if (z < 50) {
+          color = "#F1FA8C"; // Yellow
+          quality = "Acceptable";
+        } else {
+          color = "#FF5555"; // Red
+          quality = "Poor";
+        }
+        disp = QString("%1 kOhm").arg(z);
+      }
+    }
+
+    html +=
+        QString(
+            "<tr><td style='padding: 5px;'>CH%1</td>"
+            "<td style='padding: 5px; color: %2; font-weight: bold;'>%3</td>"
+            "<td style='padding: 5px; color: %2;'>%4</td></tr>")
+            .arg(i + 1)
+            .arg(color)
+            .arg(disp)
+            .arg(quality);
+  }
+  html += "</table>";
+
+  QMessageBox msgBox(this);
+  msgBox.setWindowTitle("Electrode Impedance");
+  msgBox.setIcon(QMessageBox::Information);
+  msgBox.setText(html);
+  msgBox.setTextFormat(Qt::RichText);
+  msgBox.exec();
+
+  statusBar()->showMessage("Impedance measurement complete");
 }

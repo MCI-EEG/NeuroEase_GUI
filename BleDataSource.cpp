@@ -45,6 +45,7 @@ void BleDataSource::stop() {
     delete m_controller;
     m_controller = nullptr;
   }
+  m_isConnected = false;
 }
 
 void BleDataSource::startScan() {
@@ -126,6 +127,7 @@ void BleDataSource::deviceConnected() {
 
 void BleDataSource::deviceDisconnected() {
   emit statusMessage("Disconnected.");
+  m_isConnected = false;
 }
 
 void BleDataSource::controllerError(QLowEnergyController::Error error) {
@@ -166,6 +168,7 @@ void BleDataSource::serviceStateChanged(QLowEnergyService::ServiceState s) {
     if (notification.isValid()) {
       m_service->writeDescriptor(notification,
                                  QByteArray::fromHex("0100")); // Enable Notify
+      m_isConnected = true;
       emit statusMessage(tr("Successfully connected."));
     }
   }
@@ -174,6 +177,15 @@ void BleDataSource::serviceStateChanged(QLowEnergyService::ServiceState s) {
 void BleDataSource::serviceCharacteristicChanged(
     const QLowEnergyCharacteristic &c, const QByteArray &value) {
   if (c.uuid() == QBluetoothUuid(CHAR_TX_UUID)) {
+    // Check for text response (impedance result)
+    if (value.startsWith("IMP:")) {
+      QString text = QString::fromUtf8(value).trimmed();
+      QString valuesStr = text.mid(4); // Remove "IMP:"
+      QStringList values = valuesStr.split(',');
+      emit impedanceReceived(values);
+      return;
+    }
+
     m_incomingBuffer.append(value);
 
     // Process all complete packets in buffer
@@ -198,6 +210,17 @@ void BleDataSource::serviceCharacteristicChanged(
         }
       }
     }
+  }
+}
+
+void BleDataSource::sendCommand(const QString &cmd) {
+  if (!m_service)
+    return;
+
+  QLowEnergyCharacteristic rxChar =
+      m_service->characteristic(QBluetoothUuid(CHAR_RX_UUID));
+  if (rxChar.isValid()) {
+    m_service->writeCharacteristic(rxChar, (cmd + "\n").toUtf8());
   }
 }
 

@@ -11,7 +11,6 @@
 #include <QQueue>
 #include <QTimer>
 
-
 class BleDataSource : public AbstractDataSource {
   Q_OBJECT
 public:
@@ -23,6 +22,8 @@ public:
   double sampleRate() const override {
     return 250.0;
   } // Assuming 250Hz like Real/Sim
+  void sendCommand(const QString &cmd) override;
+  bool isConnected() const { return m_isConnected; }
 
 signals:
   void statusMessage(const QString &msg);
@@ -77,8 +78,7 @@ private:
   // Drop tracking
   qint64 m_lastDeviceTimestamp = 0;
   qint64 m_dropCount = 0;
-
-  void sendCommand(const QString &cmd);
+  bool m_isConnected = false;
 };
 
 #endif // BLEDATASOURCE_H
