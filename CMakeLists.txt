@@ -15,12 +15,14 @@ find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS
     PrintSupport
     Network
     SerialPort
+    Bluetooth
 )
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS
     Widgets
     PrintSupport
     Network
     SerialPort
+    Bluetooth
 )
 
 # Alle Projektquellen
@@ -41,16 +43,23 @@ set(PROJECT_SOURCES
     FileDataSource.cpp
     electrodemap.h
     electrodemap.cpp
+    DataProcessingQt.h
+    DataProcessingQt.cpp
+    BleDataSource.h
+    BleDataSource.cpp
 )
 #test
 # Executable erzeugen
-add_executable(NeuroEase_GUI ${PROJECT_SOURCES})
+add_executable(NeuroEase_GUI ${PROJECT_SOURCES}
+    DataProcessingQt.h
+    DataProcessingQt.cpp)
 
 target_link_libraries(NeuroEase_GUI PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::PrintSupport
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::SerialPort
+    Qt${QT_VERSION_MAJOR}::Bluetooth
 )
 
 # Windows/Mac App Bundle Einstellungen

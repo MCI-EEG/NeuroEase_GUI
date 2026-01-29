@@ -12,10 +12,12 @@
 
 class QComboBox;
 class QSpinBox;
+class QCheckBox;
 class QCustomPlot;
 class QCPBars;
 class ZoomableGraphicsView;
 class AbstractDataSource;
+class DataProcessingQt;
 
 class MainWindow : public QMainWindow
 {
@@ -39,14 +41,14 @@ private:
     };
 
     void updateElectrodePlacement();
-    void updateThetaBetaBars();
-    void updateThetaBetaBarsFromEEG(const QVector<double> &values);
+    void updateThetaBetaBars();                        // Default Balken
+    void updateThetaBetaBarsFromBandPower(const BandPower &bp);
     void updateFocusIndicator(double ratio);
 
-    BandPower      computeBandPower(const QVector<double> &signal, double sampleRate);
+    BandPower       computeBandPower(const QVector<double> &signal, double sampleRate);
     QVector<double> computeMagnitudeSpectrum(const QVector<double> &signal, double sampleRate);
-    void           updateBandPowerPlot(const BandPower &bp);
-    void           updateFftPlot();
+    void            updateBandPowerPlot(const BandPower &bp);
+    void            updateFftPlot();
 
     // Zeitachse
     double                      time = 0.0;
@@ -70,6 +72,7 @@ private:
     // Heatmap / Topographie
     ZoomableGraphicsView      *electrodePlacementView  = nullptr;
     QGraphicsScene            *electrodePlacementScene = nullptr;
+    QGraphicsPixmapItem       *heatmapPixmapItem       = nullptr;
 
     // Theta/Beta-Balkendiagramm
     QCustomPlot               *thetaBetaBarPlot = nullptr;
@@ -94,6 +97,11 @@ private:
     QComboBox                 *modeCombo        = nullptr;
     QSpinBox                  *udpPortSpinBox   = nullptr;
 
+    // Filter-Checkboxen
+    QCheckBox                *hpCheckBox       = nullptr;
+    QCheckBox                *notchCheckBox    = nullptr;
+    QCheckBox                *bpCheckBox       = nullptr;
+
     // aktuelle Abtastrate für Zeitachse
     double                     currentSampleRate = 50.0;
 
@@ -102,6 +110,15 @@ private:
 
     // Buffer für Bandpower (z.B. Kanal Fp1)
     QVector<double>            bandPowerBuffer;
+
+    // Buffer für Head-Plot (RMS-Aktivität pro Kanal)
+    QVector<QVector<double>>   headBuffers;
+
+    // DSP (Highpass + Notch + Bandlimit)
+    DataProcessingQt          *dataProcessor    = nullptr;
+
+    // FFT Optimization
+    void fft(QVector<std::complex<double>>& a, bool invert);
 };
 
 #endif // MAINWINDOW_H
