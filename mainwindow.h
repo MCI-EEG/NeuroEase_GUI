@@ -16,7 +16,7 @@ class QCheckBox;
 class QCustomPlot;
 class QCPBars;
 class ZoomableGraphicsView;
-#include "AbstractDataSource.h";
+#include "AbstractDataSource.h"
 #include <QCheckBox>
 #include <QFile>
 #include <QTextStream>
@@ -85,7 +85,7 @@ private:
 
   // Heatmap / Topographie
   ZoomableGraphicsView *electrodePlacementView = nullptr;
-  QGraphicsScene *electrodePlacementScene = nullptr;
+  class ElectrodeMap *electrodePlacementScene = nullptr;
   QGraphicsPixmapItem *heatmapPixmapItem = nullptr;
 
   // Theta/Beta-Balkendiagramm

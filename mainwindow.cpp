@@ -6,8 +6,10 @@
 #include "DummyDataSource.h"
 #include "FileDataSource.h"
 #include "RealDataSource.h"
+#include "electrodemap.h"
 #include "qcustomplot.h"
 #include "zoomablegraphicsview.h"
+
 
 #include <QBrush>
 #include <QCheckBox>
@@ -226,8 +228,7 @@ MainWindow::MainWindow(QWidget *parent)
   centerColumnLayout->addWidget(bandPowerPlot);
 
   // Head Plot
-  electrodePlacementScene = new QGraphicsScene(this);
-  electrodePlacementScene->setSceneRect(-150, -150, 300, 300);
+  electrodePlacementScene = new ElectrodeMap(this);
 
   electrodePlacementView = new ZoomableGraphicsView(this);
   electrodePlacementView->setScene(electrodePlacementScene);
@@ -655,33 +656,8 @@ void MainWindow::resetPlots() {
 // -----------------------------------------------------------------------------
 
 void MainWindow::updateElectrodePlacement() {
-  if (!electrodePlacementScene)
+  if (!electrodePlacementScene || headBuffers.isEmpty())
     return;
-
-  // Alles löschen außer dem Heatmap-Item, falls wir es wiederverwenden
-  // Alternativ: Einfach alles löschen und neu aufbauen, aber das Heatmap-Item
-  // separat halten
-  electrodePlacementScene->clear();
-  heatmapPixmapItem = nullptr;
-
-  const double headR = 80.0;
-  const QPointF c(0, 0);
-  QPen headPen(Qt::black, 2);
-
-  // Elektroden-Positionen
-  QStringList labels = {"Fp1", "Fp2", "F7", "F8", "Fz",
-                        "Pz",  "T5",  "T6", "Ref"};
-  QVector<QPointF> pos = {
-      {c.x() - headR * 0.25, c.y() - headR * 0.90}, // Fp1
-      {c.x() + headR * 0.25, c.y() - headR * 0.90}, // Fp2
-      {c.x() - headR * 0.55, c.y() - headR * 0.65}, // F7
-      {c.x() + headR * 0.55, c.y() - headR * 0.65}, // F8
-      {c.x(), c.y() - headR * 0.25},                // Fz
-      {c.x(), c.y() + headR * 0.20},                // Pz
-      {c.x() - headR * 0.70, c.y() + headR * 0.45}, // T5
-      {c.x() + headR * 0.70, c.y() + headR * 0.45}, // T6
-      {c.x(), c.y()}                                // Ref
-  };
 
   // Aktivitäten extrahieren
   QVector<double> activities(numChannels, 0.0);
@@ -698,86 +674,15 @@ void MainWindow::updateElectrodePlacement() {
     if (rms > maxAct)
       maxAct = rms;
   }
+
+  // Normalisierung
   if (maxAct > 0.0) {
     for (double &a : activities)
       a /= maxAct;
   }
-  while (activities.size() < pos.size())
-    activities.append(0.0);
 
-  // --- Heatmap als QImage rendern ---
-  int imgW = 300;
-  int imgH = 300;
-  QImage heatmap(imgW, imgH, QImage::Format_ARGB32);
-  heatmap.fill(Qt::transparent);
-
-  // Bildmitte bei (150, 150) entspricht Szene (0, 0)
-  double offsetX = 150.0;
-  double offsetY = 150.0;
-
-  for (int y = 0; y < imgH; ++y) {
-    double py = double(y) - offsetY;
-    for (int x = 0; x < imgW; ++x) {
-      double px = double(x) - offsetX;
-
-      // Innerhalb des Kopfes?
-      double e = (px * px) / (headR * headR) +
-                 (py * py) / ((1.1 * headR) * (1.1 * headR));
-      if (e > 1.0)
-        continue;
-
-      double sumW = 0.0;
-      double sumA = 0.0;
-      for (int i = 0; i < activities.size(); ++i) {
-        double dx = px - pos[i].x();
-        double dy = py - pos[i].y();
-        double d = std::sqrt(dx * dx + dy * dy) + 0.01;
-        double w = 1.0 / (d * d);
-        sumW += w;
-        sumA += w * activities[i];
-      }
-      double val = (sumW > 0.0 ? sumA / sumW : 0.0);
-      val = qBound(0.0, val, 1.0);
-
-      int r = int(255 * val);
-      int g = int(255 * (1.0 - val));
-      heatmap.setPixelColor(x, y, QColor(r, g, 0, 140));
-    }
-  }
-
-  heatmapPixmapItem =
-      electrodePlacementScene->addPixmap(QPixmap::fromImage(heatmap));
-  heatmapPixmapItem->setPos(-150, -150);
-  heatmapPixmapItem->setZValue(-1);
-
-  // Kopf zeichnen
-  electrodePlacementScene->addEllipse(c.x() - headR, c.y() - headR * 1.1,
-                                      2.0 * headR, 2.2 * headR, headPen);
-  electrodePlacementScene->addEllipse(c.x() - headR - 15, c.y() - 10, 20, 30,
-                                      headPen);
-  electrodePlacementScene->addEllipse(c.x() + headR - 5, c.y() - 10, 20, 30,
-                                      headPen);
-  QPainterPath nose;
-  nose.moveTo(c.x(), c.y() - headR * 1.1 + 10);
-  nose.lineTo(c.x() - 10.0, c.y() - headR * 1.1 + 25);
-  nose.lineTo(c.x() + 10.0, c.y() - headR * 1.1 + 25);
-  nose.closeSubpath();
-  electrodePlacementScene->addPath(nose, headPen);
-
-  // Elektrodenkreise + Text
-  QPen penThin(Qt::black, 1);
-  QBrush brushGray(Qt::gray);
-  const double eSz = 12.0;
-  for (int i = 0; i < pos.size(); ++i) {
-    bool isRef = (i == pos.size() - 1);
-    QPen p = isRef ? QPen(Qt::black, 2) : penThin;
-    QBrush b = isRef ? QBrush(Qt::white) : brushGray;
-    electrodePlacementScene->addEllipse(pos[i].x() - eSz / 2.0,
-                                        pos[i].y() - eSz / 2.0, eSz, eSz, p, b);
-    auto *txt = electrodePlacementScene->addSimpleText(labels.value(i));
-    txt->setFont(QFont("Arial", isRef ? 7 : 5));
-    txt->setPos(pos[i].x() - 10, pos[i].y() - 18);
-  }
+  // Nutze die spezialisierte Klasse für das Zeichnen
+  electrodePlacementScene->setActivities(activities);
 }
 
 // -----------------------------------------------------------------------------

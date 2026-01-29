@@ -1,10 +1,14 @@
 #include "electrodemap.h"
 #include <QBrush>
+#include <QFont>
 #include <QFontMetrics>
 #include <QGraphicsEllipseItem>
+#include <QGraphicsPixmapItem>
 #include <QGraphicsSimpleTextItem>
+#include <QImage>
 #include <QPainterPath>
 #include <QPen>
+#include <QPixmap>
 #include <QtMath>
 
 ElectrodeMap::ElectrodeMap(QObject *parent) : QGraphicsScene(parent) {
@@ -14,7 +18,7 @@ ElectrodeMap::ElectrodeMap(QObject *parent) : QGraphicsScene(parent) {
   // Positionen 10-20 System (8 Kanäle + Referenz)
   double headR = 80;
   positions = {
-      {-headR * 0.25, -headR * 0.9}, // Fp1
+      {-headR * 0.25, -headR * 0.9}, // Fp1 (Wiederhergestellt)
       {headR * 0.25, -headR * 0.9},  // Fp2
       {-headR * 0.5, -headR * 0.7},  // F7
       {headR * 0.5, -headR * 0.7},   // F8
@@ -24,6 +28,13 @@ ElectrodeMap::ElectrodeMap(QObject *parent) : QGraphicsScene(parent) {
       {headR * 0.7, headR * 0.5},    // T6
       {0, 0}                         // Referenz (R)
   };
+
+  offsets.resize(labels.size());
+  for (int i = 0; i < offsets.size(); ++i)
+    offsets[i] = QPointF(0, 0);
+
+  // Beispiel: T5 (Index 6) ein wenig nach rechts und unten schieben
+  offsets[6] = QPointF(0.5, 1.0);
 }
 
 void ElectrodeMap::reset() {
@@ -61,37 +72,49 @@ void ElectrodeMap::drawHead() {
 
 void ElectrodeMap::drawHeatmap(const QVector<double> &activities) {
   double headR = 80;
-  double sceneR = 150;
-  double step = 3.0;
+  int imgW = 300;
+  int imgH = 300;
 
-  for (double x = -sceneR; x <= sceneR; x += step) {
-    for (double y = -sceneR; y <= sceneR; y += step) {
-      // nur innerhalb des Kopfovals
-      double e =
-          (x * x) / (headR * headR) + (y * y) / ((headR * 1.1) * (headR * 1.1));
+  QImage heatmap(imgW, imgH, QImage::Format_ARGB32);
+  heatmap.fill(Qt::transparent);
+
+  // Bildmitte bei (150, 150) entspricht Szene (0, 0)
+  double offsetX = 150.0;
+  double offsetY = 150.0;
+
+  for (int y = 0; y < imgH; ++y) {
+    double py = double(y) - offsetY;
+    for (int x = 0; x < imgW; ++x) {
+      double px = double(x) - offsetX;
+
+      // Innerhalb des Kopfovals?
+      double e = (px * px) / (headR * headR) +
+                 (py * py) / ((1.1 * headR) * (1.1 * headR));
       if (e > 1.0)
         continue;
 
-      // Inverse Distanzgewichtung (IDW)
-      double sum = 0, wsum = 0;
-      for (int i = 0; i < positions.size(); ++i) {
-        double dx = x - positions[i].x();
-        double dy = y - positions[i].y();
+      double sumW = 0.0;
+      double sumA = 0.0;
+      for (int i = 0; i < activities.size() && i < positions.size(); ++i) {
+        double dx = px - positions[i].x();
+        double dy = py - positions[i].y();
         double d = qSqrt(dx * dx + dy * dy) + 0.01;
         double w = 1.0 / (d * d);
-        sum += w * activities[i];
-        wsum += w;
+        sumW += w;
+        sumA += w * activities[i];
       }
-      double iv = sum / wsum;
-      int red = qBound(0, int(iv * 255), 255);
-      int green = 255 - red;
-      QColor col(red, green, 0, 150);
+      double val = (sumW > 0.0 ? sumA / sumW : 0.0);
+      val = qBound(0.0, val, 1.0);
 
-      // zeichne als kleines Rechteck/Kreis
-      addEllipse(x - step / 2.0, y - step / 2.0, step, step, Qt::NoPen,
-                 QBrush(col));
+      int r = int(255 * val);
+      int g = int(255 * (1.0 - val));
+      heatmap.setPixelColor(x, y, QColor(r, g, 0, 140));
     }
   }
+
+  heatmapItem = addPixmap(QPixmap::fromImage(heatmap));
+  heatmapItem->setPos(-150, -150);
+  heatmapItem->setZValue(-1);
 }
 
 void ElectrodeMap::drawElectrodes(const QVector<double> &activities) {
@@ -100,31 +123,32 @@ void ElectrodeMap::drawElectrodes(const QVector<double> &activities) {
   double eSz = 14;
 
   for (int i = 0; i < positions.size(); ++i) {
+    double activity = (i < activities.size()) ? activities[i] : 0.0;
     // Marker
     QPen penEdge = (i == positions.size() - 1 ? QPen(Qt::black, 2) : ePen);
     QBrush brushBg = (i == positions.size() - 1 ? QBrush(Qt::white) : eBrush);
 
-    // Ellipse direkt in der Scene hinzufügen
-    QGraphicsEllipseItem *elItem =
-        addEllipse(positions[i].x() - eSz / 2.0, positions[i].y() - eSz / 2.0,
-                   eSz, eSz, penEdge, brushBg);
-    elItem->setZValue(10); // Sicherstellen, dass Electroden über Heatmap liegen
-
-    // Text separat hinzufügen
-    QGraphicsSimpleTextItem *text = addSimpleText(labels[i]);
     QFont font("Arial");
-    font.setPixelSize(6); // Etwas kleiner für 14px Kreis
+    font.setPixelSize(6);
     font.setBold(true);
+
+    // Elektrode relativ zum eigenen Ursprung (0,0) erstellen und dann
+    // positionieren
+    QGraphicsEllipseItem *elItem =
+        addEllipse(-eSz / 2.0, -eSz / 2.0, eSz, eSz, penEdge, brushBg);
+    elItem->setPos(positions[i]);
+    elItem->setZValue(10);
+
+    // Label als Kind der Elektrode -> (0,0) ist jetzt die Mitte der Elektrode
+    QGraphicsSimpleTextItem *text =
+        new QGraphicsSimpleTextItem(labels[i], elItem);
     text->setFont(font);
     text->setBrush(Qt::black);
     text->setZValue(11);
 
-    // Robuste Zentrierung via QFontMetrics
-    QFontMetrics fm(font);
-    double tw = fm.horizontalAdvance(labels[i]);
-    double th = fm.height();
-
-    text->setPos(positions[i].x() - tw / 5.0,
-                 positions[i].y() - th / 2.0 + 1.0);
+    // Den Text innerhalb der Elektrode zentrieren + manueller Offset
+    QRectF br = text->boundingRect();
+    text->setPos(-br.width() / 2.0 + offsets[i].x(),
+                 -br.height() / 2.0 + offsets[i].y());
   }
 }
