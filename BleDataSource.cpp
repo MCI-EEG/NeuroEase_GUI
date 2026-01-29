@@ -3,7 +3,6 @@
 #include <QDebug>
 #include <QtEndian>
 
-
 BleDataSource::BleDataSource(QObject *parent) : AbstractDataSource(parent) {
   m_discoveryAgent = new QBluetoothDeviceDiscoveryAgent(this);
   m_discoveryAgent->setLowEnergyDiscoveryTimeout(5000);
@@ -207,19 +206,48 @@ void BleDataSource::parsePacket(const QByteArray &data) {
     return;
 
   // structure:
-  // 0: 0xA0 (Header)
-  // 1-8: Timestamp (8 bytes)
+  // 0: 0xA0 (Header) -> Checked before calling parsePacket
+  // 1-8: Timestamp (8 bytes, int64, microseconds)
   // 9-11: Status (Status[0], Status[1], Status[2])
-  // 12-43: 8 channels * 4 bytes (Big Endian? ADS1299 is usually Big Endian
-  // output,
-  //        but ESP32 code uses memcpy from a struct. The struct
-  //        'ads1299_sample_t' in typical ESP32 ADS1299 drivers often holds
-  //        converted int32s in memory (Little Endian on ESP32). However,
-  //        `eeg_app.c` takes `ads1299_sample_t` and copies it directly. If
-  //        `ads1299_sample_t` has `int32_t ch_data[8]`, memory layout on ESP32
-  //        is Little Endian. So we should interpret as Little Endian.
+  // 12-43: 8 channels * 4 bytes (int32)
 
-  // Extract Channel Data (offset 12)
+  // 1. Timestamp & Drops
+  QDataStream tsStream(data.mid(1, 8));
+  tsStream.setByteOrder(QDataStream::LittleEndian);
+  qint64 packetTs = 0;
+  tsStream >> packetTs;
+
+  if (m_lastDeviceTimestamp != 0) {
+    qint64 diff = packetTs - m_lastDeviceTimestamp;
+    // Expected at 250Hz: 4000 µs
+    // Tolerance: 6000 µs
+    const qint64 expected = 4000;
+    if (diff > expected * 1.5) {
+      int dropped = qRound(double(diff) / double(expected)) - 1;
+      if (dropped > 0) {
+        m_dropCount += dropped;
+        if (m_dropCount % 50 == 0) { // Log every 50 drops
+          qWarning() << "BLE Drop Detection: " << dropped
+                     << "packets lost. Total:" << m_dropCount;
+        }
+      }
+    }
+  }
+  m_lastDeviceTimestamp = packetTs;
+
+  // 2. Status Byte
+  // Python: if (stat[0] & 0xF0) == 0xC0
+  unsigned char stat0 = static_cast<unsigned char>(data.at(9));
+  if ((stat0 & 0xF0) != 0xC0) {
+    // Invalid packet status (e.g. LOFF bits might be weird, or not ADS1299
+    // data) We log it but maybe still process if it's just leads off? Python
+    // script strictly requires it for adding to batch. Let's log warning and
+    // return to be safe.
+    qWarning() << "Invalid Status Byte:" << Qt::hex << stat0;
+    return;
+  }
+
+  // 3. Channel Data
   QVector<double> values;
   values.reserve(8);
 
@@ -229,12 +257,6 @@ void BleDataSource::parsePacket(const QByteArray &data) {
   for (int i = 0; i < 8; ++i) {
     qint32 rawVal;
     stream >> rawVal;
-
-    // Scale? ADS1299 usually needs scaling factor.
-    // For now, raw values are fine, or we can apply standard scaling:
-    // scale = 4.5V / (24 * 2^24) ... but this depends on gain.
-    // Let's pass raw values for now as float.
-    // Assuming 24-bit data sign-extended to 32-bit.
 
     // ADS1299 scaling (Gain=24, Vref=4.5V, 24-bit)
     // 1 LSB = (2 * Vref / Gain) / 2^24

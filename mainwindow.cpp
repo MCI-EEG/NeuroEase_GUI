@@ -12,6 +12,7 @@
 #include <QBrush>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDir>
 #include <QFileDialog>
 #include <QFont>
 #include <QGraphicsPixmapItem>
@@ -22,6 +23,7 @@
 #include <QPen>
 #include <QRandomGenerator>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QWidget>
 #include <QtMath>
 #include <algorithm>
@@ -132,10 +134,10 @@ MainWindow::MainWindow(QWidget *parent)
   // Links unten: Data source + UDP-Port + Start/Stop/Reset
   // -------------------------------------------------------------------------
   modeCombo = new QComboBox(this);
-  modeCombo->addItem("Simulated");
-  modeCombo->addItem("Real (UDP)");
+  modeCombo->addItem("Simulated (Filter Testing)");
+  modeCombo->addItem("Wireless (UDP)");
   modeCombo->addItem("Bluetooth (BLE)");
-  modeCombo->addItem("File (OpenBCI)");
+  modeCombo->addItem("File (CSV)");
 
   udpPortSpinBox = new QSpinBox(this);
   udpPortSpinBox->setRange(1, 65535);
@@ -148,6 +150,10 @@ MainWindow::MainWindow(QWidget *parent)
   sourceLayout->addSpacing(10);
   sourceLayout->addWidget(new QLabel("UDP port:", this));
   sourceLayout->addWidget(udpPortSpinBox);
+
+  recordCheckBox = new QCheckBox("Record (CSV)", this);
+  sourceLayout->addSpacing(10);
+  sourceLayout->addWidget(recordCheckBox);
 
   startButton = new QPushButton("Start", this);
   stopButton = new QPushButton("Stop", this);
@@ -213,6 +219,8 @@ MainWindow::MainWindow(QWidget *parent)
   {
     QVector<double> initVals{0, 0, 0, 0, 0};
     bandPowerBars->setData(bandPowerTicks, initVals);
+    bandPowerPlot->xAxis->setRange(
+        0.5, 5.5); // Ensure all bars (1-5) are fully visible
   }
 
   centerColumnLayout->addWidget(bandPowerPlot);
@@ -226,6 +234,8 @@ MainWindow::MainWindow(QWidget *parent)
   electrodePlacementView->setRenderHint(QPainter::Antialiasing, true);
   electrodePlacementView->setMinimumHeight(300);
   electrodePlacementView->setMinimumWidth(300);
+  electrodePlacementView->setStyleSheet(
+      "background-color: white; border: none;");
 
   centerColumnLayout->addWidget(electrodePlacementView, 0, Qt::AlignCenter);
 
@@ -296,6 +306,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(src, &AbstractDataSource::newEEGData, this,
             &MainWindow::handleNewEEGData);
+    connect(
+        src, &AbstractDataSource::statusMessage, this,
+        [this](const QString &msg) { this->statusBar()->showMessage(msg); });
   };
 
   // Default: Simulation
@@ -362,7 +375,11 @@ MainWindow::MainWindow(QWidget *parent)
             udpPortSpinBox->setEnabled(false);
             return;
           }
-          connectDataSource(new FileDataSource(fileName, this));
+          auto *fileDs = new FileDataSource(fileName, this);
+          connectDataSource(fileDs);
+          fileDs->reportInitStatus(); // Re-emit the status now that we are
+                                      // connected
+
           udpPortSpinBox->setEnabled(false);
         }
 
@@ -390,12 +407,20 @@ MainWindow::MainWindow(QWidget *parent)
       real->setUdpPort(static_cast<quint16>(udpPortSpinBox->value()));
     }
 
+    if (recordCheckBox->isChecked()) {
+      if (!startRecording()) {
+        return; // Abort if user cancelled file selection
+      }
+    }
+
     dataSource->start();
   });
 
   connect(stopButton, &QPushButton::clicked, this, [=]() {
-    if (dataSource)
+    if (dataSource) {
       dataSource->stop();
+    }
+    stopRecording();
   });
 
   connect(resetButton, &QPushButton::clicked, this, &MainWindow::resetPlots);
@@ -458,9 +483,15 @@ void MainWindow::handleNewEEGData(const QVector<double> &values) {
     accumPlots = 0.0;
   }
 
-  // ---- Bandpower-Buffer (Kanal 0 / Fp1) ----
+  // ---- Bandpower-Buffer (Average of all channels for Global Field Power) ----
   if (!filtered.isEmpty()) {
-    bandPowerBuffer.append(filtered[0]);
+    double sum = 0.0;
+    for (double v : filtered) {
+      sum += v;
+    }
+    double avg = sum / double(filtered.size());
+    bandPowerBuffer.append(avg);
+
     int maxSamples = int(currentSampleRate * windowSec);
     // Erst aufräumen, wenn deutlich zu groß (Amortisierung)
     if (bandPowerBuffer.size() > maxSamples * 1.5) {
@@ -522,6 +553,69 @@ void MainWindow::handleNewEEGData(const QVector<double> &values) {
   }
 
   time += dt;
+
+  if (isRecording) {
+    // Write data to CSV: Index, Ch1, Ch2, ...
+    for (int i = 0; i < values.size() / numChannels; ++i) {
+      // Handle multi-sample packets if necessary, though handleNewEEGData
+      // usually gets one sample vector of size numChannels.
+      // BleDataSource sends 8 values. Dummy sends 8.
+
+      recordingStream << recordingIndex++ << ",";
+      for (int ch = 0; ch < numChannels; ++ch) {
+        recordingStream << values[ch];
+        if (ch < numChannels - 1)
+          recordingStream << ",";
+      }
+      recordingStream << "\n";
+    }
+  }
+}
+
+bool MainWindow::startRecording() {
+  QString docPath =
+      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+  QString userFile = QFileDialog::getSaveFileName(
+      this, tr("Save EEG Recording"),
+      docPath + "/NeuroEase_Recordings/EEG_Record.csv",
+      tr("CSV Files (*.csv)"));
+
+  if (userFile.isEmpty())
+    return false;
+
+  recordingFile.setFileName(userFile);
+  if (recordingFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    recordingStream.setDevice(&recordingFile);
+
+    // Write Header
+    recordingStream << "% Format = NeuroEaseCSV\n";
+    recordingStream << "% Sample Rate = " << currentSampleRate << "\n";
+    recordingStream << "% Created by NeuroEase GUI\n";
+    recordingStream << "% File Path = " << userFile << "\n";
+    recordingStream
+        << "Index, Fp1, Fp2, F7, F8, Fz, Pz, T5, T6\n"; // Hardcoded labels for
+                                                        // now
+
+    isRecording = true;
+    recordingIndex = 0;
+    statusBar()->showMessage("Recording to " + userFile);
+    return true;
+  } else {
+    QMessageBox::warning(this, "Recording Error",
+                         "Could not create file: " + userFile);
+    recordCheckBox->setChecked(false);
+    return false;
+  }
+}
+
+void MainWindow::stopRecording() {
+  if (isRecording) {
+    if (recordingFile.isOpen()) {
+      recordingFile.close();
+    }
+    isRecording = false;
+    statusBar()->showMessage("Recording saved.");
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -554,8 +648,6 @@ void MainWindow::resetPlots() {
   updateBandPowerPlot(BandPower{0, 0, 0, 0, 0});
   updateFftPlot();
   updateFocusIndicator(0.0);
-  if (statusBar())
-    statusBar()->clearMessage();
 }
 
 // -----------------------------------------------------------------------------

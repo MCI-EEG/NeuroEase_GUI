@@ -2,29 +2,32 @@
 #define DUMMYDATASOURCE_H
 
 #include "AbstractDataSource.h"
+#include <QElapsedTimer>
+#include <QRandomGenerator>
 #include <QTimer>
 #include <QVector>
 #include <QtMath>
-#include <QRandomGenerator>
 
-class DummyDataSource : public AbstractDataSource
-{
-    Q_OBJECT
+
+class DummyDataSource : public AbstractDataSource {
+  Q_OBJECT
 public:
-    DummyDataSource(QObject *parent = nullptr);
-    void start();
-    void stop();
-    double sampleRate() const override;
+  DummyDataSource(QObject *parent = nullptr);
+  void start();
+  void stop() override;
+  double sampleRate() const override;
 
 private slots:
-    void generateData();
+  void generateData();
 
 private:
-    QTimer *timer;
-    double time;
-    int numChannels = 8;
-    QVector<double> channelPhases;
+  QTimer *timer;
+  QElapsedTimer m_elapsedTimer;
+  qint64 m_samplesGenerated = 0;
+
+  double time;
+  int numChannels = 8;
+  QVector<double> channelPhases;
 };
 
 #endif // DUMMYDATASOURCE_H
-

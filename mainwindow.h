@@ -10,14 +10,17 @@
 #include <QVector>
 #include <complex>
 
-
 class QComboBox;
 class QSpinBox;
 class QCheckBox;
 class QCustomPlot;
 class QCPBars;
 class ZoomableGraphicsView;
-class AbstractDataSource;
+#include "AbstractDataSource.h";
+#include <QCheckBox>
+#include <QFile>
+#include <QTextStream>
+
 class DataProcessingQt;
 
 class MainWindow : public QMainWindow {
@@ -26,6 +29,16 @@ class MainWindow : public QMainWindow {
 public:
   explicit MainWindow(QWidget *parent = nullptr);
   ~MainWindow() override;
+
+  // Recording
+  QCheckBox *recordCheckBox = nullptr;
+  QFile recordingFile;
+  QTextStream recordingStream;
+  bool isRecording = false;
+  int recordingIndex = 0;
+
+  bool startRecording();
+  void stopRecording();
 
 private slots:
   void handleNewEEGData(const QVector<double> &values);
