@@ -85,8 +85,9 @@ void DataProcessingQt::designFilters() {
   // 1 Hz Highpass, Q ~ 0.707 (Butterworth-artig)
   Biquad hp = makeHighpass(m_sampleRate, 1.0, 0.707);
 
-  // 50 Hz Notch, widened to cover ~48-55 Hz (Center=51.5, BW=7 => Q~7.35)
-  Biquad notch = makeNotch(m_sampleRate, 51.5, 7.35);
+  // 50 Hz Notch, widened (Q=3.0) to aggressively filter 45-55 Hz and
+  // surroundings
+  Biquad notch = makeNotch(m_sampleRate, 50.0, 3.0);
 
   // 50 Hz Lowpass, Q ~ 0.707 (2. Ordnung Butterworth)
   Biquad lp = makeLowpass(m_sampleRate, 50.0, 0.707);

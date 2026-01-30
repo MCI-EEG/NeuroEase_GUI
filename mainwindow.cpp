@@ -212,10 +212,10 @@ MainWindow::MainWindow(QWidget *parent)
   biasButton->setCheckable(true);
   devLayout->addWidget(biasButton, 2, 0);
 
-  srb1Button = new QPushButton("SRB1 (Ref)", this);
-  srb1Button->setCheckable(true);
-  srb1Button->setChecked(true); // Default ON
-  devLayout->addWidget(srb1Button, 2, 1);
+  srb2Button = new QPushButton("SRB2 (Ref)", this);
+  srb2Button->setCheckable(true);
+  srb2Button->setChecked(true); // Default ON
+  devLayout->addWidget(srb2Button, 2, 1);
 
   testSignalButton = new QPushButton("Test Signal", this);
   testSignalButton->setCheckable(true);
@@ -228,7 +228,7 @@ MainWindow::MainWindow(QWidget *parent)
   connect(gainCombo, &QComboBox::currentTextChanged, this,
           &MainWindow::setGain);
   connect(biasButton, &QPushButton::toggled, this, &MainWindow::toggleBias);
-  connect(srb1Button, &QPushButton::toggled, this, &MainWindow::toggleSrb1);
+  connect(srb2Button, &QPushButton::toggled, this, &MainWindow::toggleSrb2);
   connect(testSignalButton, &QPushButton::toggled, this,
           &MainWindow::toggleTestSignal);
 
@@ -427,6 +427,14 @@ MainWindow::MainWindow(QWidget *parent)
                   [this](const QString &msg) {
                     if (msg == tr("Successfully connected.")) {
                       this->statusBar()->showMessage("Connected.");
+                      // Apply default settings on connect (matching Python
+                      // script)
+                      if (this->dataSource) {
+                        this->dataSource->sendCommand("GAIN ALL 24");
+                        this->dataSource->sendCommand("SRB2 1");
+                        this->dataSource->sendCommand("BIAS 0");
+                        this->dataSource->sendCommand("TEST 0");
+                      }
                     }
                   });
 
@@ -637,14 +645,11 @@ void MainWindow::handleNewEEGData(const QVector<double> &values) {
 
   if (isRecording) {
     // Write data to CSV: Index, Ch1, Ch2, ...
-    for (int i = 0; i < values.size() / numChannels; ++i) {
-      // Handle multi-sample packets if necessary, though handleNewEEGData
-      // usually gets one sample vector of size numChannels.
-      // BleDataSource sends 8 values. Dummy sends 8.
-
+    int numSamples = filtered.size() / numChannels;
+    for (int i = 0; i < numSamples; ++i) {
       recordingStream << recordingIndex++ << ",";
       for (int ch = 0; ch < numChannels; ++ch) {
-        recordingStream << values[ch];
+        recordingStream << filtered[i * numChannels + ch];
         if (ch < numChannels - 1)
           recordingStream << ",";
       }
@@ -1162,9 +1167,9 @@ void MainWindow::toggleBias(bool checked) {
   }
 }
 
-void MainWindow::toggleSrb1(bool checked) {
+void MainWindow::toggleSrb2(bool checked) {
   if (dataSource) {
-    dataSource->sendCommand(checked ? "SRB1 1" : "SRB1 0");
+    dataSource->sendCommand(checked ? "SRB2 1" : "SRB2 0");
   }
 }
 

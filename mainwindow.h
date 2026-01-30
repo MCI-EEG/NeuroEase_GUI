@@ -49,7 +49,7 @@ private slots:
   void setSps(const QString &text);
   void setGain(const QString &text);
   void toggleBias(bool checked);
-  void toggleSrb1(bool checked);
+  void toggleSrb2(bool checked);
   void toggleTestSignal(bool checked);
 
 private:
@@ -126,7 +126,7 @@ private:
   QComboBox *spsCombo = nullptr;
   QComboBox *gainCombo = nullptr;
   QPushButton *biasButton = nullptr;
-  QPushButton *srb1Button = nullptr;
+  QPushButton *srb2Button = nullptr;
   QPushButton *testSignalButton = nullptr;
 
   // Filter-Checkboxen
